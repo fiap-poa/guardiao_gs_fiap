@@ -1,0 +1,15 @@
+# Credenciais, sessão do Telegram e evidências ficam fora do git.
+.env
+.env.*
+!.env.example
+.local/
+evidencias/
+*.session*
+
+# Ambiente e caches
+.venv/
+__pycache__/
+.pytest_cache/
+
+# PDF da GS (não versionar)
+*.pdf

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guardião da Família</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <h1>Guardião da Família</h1>
+    <p class="sub">Estado do Guardião neste computador.</p>
+    <dl id="estado" aria-live="polite">
+      <div><dt>Conta da pessoa idosa</dt><dd id="conectado">carregando…</dd></div>
+      <div><dt>Responsável (tocou Iniciar no bot)</dt><dd id="responsavel">carregando…</dd></div>
+    </dl>
+    <p id="erro" class="erro" hidden>Não consegui falar com o backend em 127.0.0.1:5000.</p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
