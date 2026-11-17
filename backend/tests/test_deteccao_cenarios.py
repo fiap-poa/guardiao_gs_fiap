@@ -8,24 +8,29 @@ from duble_gemini import DubleRegras
 from guardiao.analise import Analisador, Detector, montar_pedido
 from guardiao.canal.cenarios import CENARIOS, CONTATOS, NOME_IDOSA
 from guardiao.canal.fabrica import criar_canal
+from guardiao.canal.base import InicioBot
+from guardiao.canal.simulado import CanalSimulado
 from guardiao.conjunto_cap3 import CONJUNTO_CAP3
 from guardiao.recepcao import Guardiao, RelogioAjustavel
-from test_simulado import sem_rede  # noqa: F401 (fixture)
+from test_simulado import SaidaFalsa, sem_rede  # noqa: F401 (fixture)
 
 
 @pytest.fixture
 def montagem(sem_rede):
-    canal = criar_canal("demonstracao", ambiente={})
+    # com a responsável cadastrada e um bot falso, a suspeita vira caso (história 6) e fica
+    canal = CanalSimulado(saida=SaidaFalsa())
     duble = DubleRegras()
     suspeitas = []
     relogio = RelogioAjustavel()
     analisador = Analisador(
         Detector(duble), canal.listar_contatos, ao_suspeitar=suspeitas.append, relogio=relogio, varredura_s=None
     )
-    guardiao = Guardiao(canal, relogio=relogio, analisador=analisador)
+    guardiao = Guardiao(canal, relogio=relogio, analisador=analisador, varredura_casos_s=None)
     guardiao.conectar()
+    codigo = guardiao.cadastro.gerar_codigo()
+    guardiao.cadastro.tratar_inicio(InicioBot(usuario_id=1, destinatario=1, parametro=codigo, nome="Ana"))
     yield canal, duble, suspeitas, analisador
-    canal.fechar()
+    guardiao.fechar()
 
 
 def _pedidos_de(duble, cenario):

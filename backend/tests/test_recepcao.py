@@ -67,6 +67,7 @@ def test_conectar_pareia_liga_a_recepcao_e_habilita_a_idosa_sem_resposta():
         "codigos_validos": 0,
         "conhecidos": 5,  # Mariana, Lucas, Pedro, Carlos e o bot
         "observados": 0,
+        "casos": {"aguardando": 0, "golpe": 0, "era_ele_mesmo": 0, "sem_resposta": 0},
     }
     assert saida.handler is not None  # a recepção do bot também está ligada
     assert saida.avisos == [] and canal.celular() == []  # o bot não responde à pessoa idosa

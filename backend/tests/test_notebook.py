@@ -3,6 +3,7 @@
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -101,8 +102,29 @@ def test_notebook_cobre_o_roteiro(notebook):
         "iniciar_em_segundo_plano",
         "serve_kernel_port_as_iframe",
         "guardiao.fechar()",
+        # história 6: alerta, toque, desfecho e casos
+        "PRAZO_RESPOSTA = timedelta(minutes=10)",
+        'COMO_CHAMA_IDOSA = "sua mãe"',
+        'CASOS_ARQUIVO = LOCAL_DIR / "casos.json"',
+        "prazo_resposta=PRAZO_RESPOSTA, casos_arquivo=CASOS_ARQUIVO, como_chama_idosa=COMO_CHAMA_IDOSA",
+        "TOQUE_SIMULADO = False",
+        "guardiao.casos.verificar_prazos()",
+        "guardiao.casos.listar()",
+        "guardiao.casos.apagar_tudo()",
     ):
         assert trecho in codigo, trecho
+
+
+def test_secoes_numeradas_e_sem_promessa_de_proxima_versao_do_alerta(notebook):
+    titulos = [
+        _fonte(c).splitlines()[0] for c in notebook["cells"] if c["cell_type"] == "markdown" and _fonte(c).startswith("## ")
+    ]
+    assert [t.split(".")[0] for t in titulos] == [f"## {n}" for n in range(1, 11)]
+    assert "## 8. Alerta, toque e desfecho" in titulos
+    texto = "\n".join(_fonte(c) for c in notebook["cells"])
+    assert "próximas versões" not in texto
+    assert texto.count("próxima versão") == 1 and "tela completa do familiar entra na próxima versão" in texto
+    assert "Teste do Guardião" not in texto  # o aviso de teste saiu: os avisos agora são de verdade
 
 
 def test_notebook_nao_mostra_texto_do_que_foi_descartado(notebook):
@@ -251,7 +273,7 @@ def test_celula_do_conjunto_cap3(notebook, capsys):
 
 
 @pytest.mark.parametrize("com_gemini", [True, False])
-def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, monkeypatch, com_gemini):
+def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, monkeypatch, tmp_path, com_gemini):
     import guardiao.canal.fabrica as fabrica
     import guardiao.gemini as gemini
     from duble_gemini import DubleRegras
@@ -260,13 +282,18 @@ def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, mon
     from guardiao.canal.simulado import CanalSimulado
 
     detector = Detector(DubleRegras()) if com_gemini else None
+    import guardiao.config as config
+
     monkeypatch.setattr(gemini, "criar_detector", lambda: detector)
     monkeypatch.setattr(fabrica, "criar_canal", lambda modo: CanalSimulado())
+    monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)  # os casos não vão para backend/.local
     ns = {"MODO": "demonstracao"}
     try:
         exec(_celula_com(notebook, "criar_canal(MODO)"), ns)
         saida = capsys.readouterr().out
         guardiao = ns["guardiao"]
+        assert guardiao.casos.prazo.total_seconds() == 600 and guardiao.casos.como_chama_idosa == "sua mãe"
+        assert guardiao.casos.repositorio.arquivo == tmp_path / "casos.json"
         if com_gemini:
             assert guardiao.analisador is not None and guardiao.analisador.detector is detector
             assert "detecção pelo Gemini: ligada" in saida
@@ -278,3 +305,176 @@ def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, mon
         if ns.get("guardiao") is not None:
             ns["guardiao"].fechar()
         definir_guardiao(None)
+
+
+# --------------------------------------------------------------------------- seção 8 (história 6)
+
+
+def _namespace_com_casos(tmp_path, notebook, capsys, cadastrar=True, cadastrar_antes=False):
+    """Seções 5 a 7 na ordem do notebook: injeção (seção 6) e depois o cadastro (seção 7)."""
+    from datetime import timedelta
+
+    from duble_gemini import DubleRegras
+    from guardiao.analise import Analisador, Detector
+    from guardiao.canal.cenarios import CENARIOS
+    from guardiao.canal.simulado import CanalSimulado
+    from guardiao.recepcao import Guardiao, RelogioAjustavel
+    from test_casos import DubleBot, Montagem
+
+    bot = DubleBot()
+    canal = CanalSimulado(saida=bot)
+    relogio = RelogioAjustavel()
+    analisadas, suspeitas = [], []
+    detector = Detector(DubleRegras())
+    analisador = Analisador(detector, canal.listar_contatos, ao_suspeitar=suspeitas.append, relogio=relogio, varredura_s=None)
+    arquivo = tmp_path / "casos.json"
+    guardiao = Guardiao(
+        canal,
+        relogio=relogio,
+        ao_analisar=analisadas.append,
+        analisador=analisador,
+        prazo_resposta=timedelta(minutes=10),
+        casos_arquivo=arquivo,
+        como_chama_idosa="sua mãe",
+        varredura_casos_s=None,
+    )
+    guardiao.conectar()
+    ns = {
+        "MODO": "demonstracao",
+        "canal": canal,
+        "guardiao": guardiao,
+        "ANALISADAS": analisadas,
+        "SUSPEITAS": suspeitas,
+        "CENARIOS": CENARIOS,
+        "RELOGIO": relogio,
+        "PRAZO_RESPOSTA": timedelta(minutes=10),
+        "CASOS_ARQUIVO": arquivo,
+        "detector": detector,
+        "bot": bot,
+    }
+    cadastro = lambda: Montagem.cadastrar(SimpleNamespace(guardiao=guardiao, bot=bot))  # noqa: E731
+    if cadastrar and cadastrar_antes:
+        cadastro()
+    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
+    if cadastrar and not cadastrar_antes:
+        cadastro()
+    capsys.readouterr()
+    return ns
+
+
+def _celula_golpe(notebook, simulado=True, espera=None):
+    fonte = _celula_com(notebook, "def abrir_caso")
+    if simulado:
+        fonte = fonte.replace("TOQUE_SIMULADO = False", "TOQUE_SIMULADO = True")
+    if espera is not None:
+        fonte = fonte.replace("ESPERA_TOQUE_S = 180", f"ESPERA_TOQUE_S = {espera}")
+    return fonte
+
+
+def _avisos(ns):
+    return [linha.texto for linha in ns["canal"].celular() if linha.tipo == "aviso"]
+
+
+def test_secao_8_golpe_com_toque_simulado(notebook, capsys, tmp_path):
+    from test_casos import NUMERO_PEDRO
+
+    ns = _namespace_com_casos(tmp_path, notebook, capsys)
+    assert ns["guardiao"].casos.listar() == []  # na seção 6 ainda não havia responsável
+    exec(_celula_golpe(notebook), ns)
+    saida = capsys.readouterr().out
+    assert "dizendo ser Pedro" in saida and 'toque simulado: "É golpe"' in saida
+    assert "caso: golpe (a responsável tocou É golpe)" in saida
+    assert ">> " in saida and "Não faça nenhum Pix agora" in saida
+    [alerta] = ns["bot"].alertas
+    assert alerta.numero_verdadeiro == NUMERO_PEDRO and alerta.como_chama_idosa == "sua mãe"
+    assert len(_avisos(ns)) == 1
+    exec(_celula_golpe(notebook), ns)  # de novo: o caso já está decidido
+    assert "já foi decidido" in capsys.readouterr().out and len(ns["bot"].alertas) == 1
+    ns["guardiao"].fechar()
+
+
+def test_secao_8_golpe_com_caso_aberto_na_secao_6(notebook, capsys, tmp_path):
+    ns = _namespace_com_casos(tmp_path, notebook, capsys, cadastrar_antes=True)
+    assert len(ns["bot"].alertas) == 2  # Pedro e Lucas já alertados na injeção
+    exec(_celula_golpe(notebook), ns)
+    assert "caso: golpe" in capsys.readouterr().out and len(ns["bot"].alertas) == 2
+    ns["guardiao"].fechar()
+
+
+def test_secao_8_golpe_espera_o_toque_de_verdade(notebook, capsys, tmp_path):
+    import threading
+    import time
+
+    ns = _namespace_com_casos(tmp_path, notebook, capsys)
+
+    def responsavel_toca():
+        limite = time.monotonic() + 5
+        while ns["guardiao"].casos.caso_de("sim:novo-1") is None and time.monotonic() < limite:
+            time.sleep(0.01)
+        time.sleep(0.2)
+        ns["bot"].tocar("golpe")
+
+    tocador = threading.Thread(target=responsavel_toca)
+    tocador.start()
+    exec(_celula_golpe(notebook, simulado=False, espera=10), ns)
+    tocador.join(5)
+    saida = capsys.readouterr().out
+    assert 'toque "É golpe" no alerta' in saida and "caso: golpe" in saida and "toque simulado" not in saida
+    ns["guardiao"].fechar()
+
+
+def test_secao_8_golpe_sem_toque_continua_aguardando(notebook, capsys, tmp_path):
+    ns = _namespace_com_casos(tmp_path, notebook, capsys)
+    exec(_celula_golpe(notebook, simulado=False, espera=0), ns)
+    saida = capsys.readouterr().out
+    assert "caso: aguardando" in saida and "ainda sem toque" in saida and _avisos(ns) == []
+    ns["guardiao"].fechar()
+
+
+def test_secao_8_lucas_sem_resposta_e_toque_tardio(notebook, capsys, tmp_path):
+    ns = _namespace_com_casos(tmp_path, notebook, capsys)
+    exec(_celula_golpe(notebook), ns)
+    capsys.readouterr()
+    exec(_celula_com(notebook, "remetente_lucas"), ns)
+    saida = capsys.readouterr().out
+    assert "relógio do Guardião adiantado 0:10:00" in saida
+    assert "caso: sem resposta (o prazo venceu)" in saida and "caso: era ele mesmo (contato liberado)" in saida
+    assert "o número agora está: conhecido" in saida
+    avisos = _avisos(ns)
+    assert len(avisos) == 2 and "dizendo ser Lucas" in avisos[1]
+    assert ns["RELOGIO"].deslocamento.total_seconds() == 0
+    assert ns["guardiao"].estado()["casos"] == {"aguardando": 0, "golpe": 1, "era_ele_mesmo": 1, "sem_resposta": 0}
+    exec(_celula_com(notebook, "def _hora"), ns)
+    lista = capsys.readouterr().out
+    assert "Lucas: era ele mesmo" in lista and "Pedro: golpe" in lista and "resposta: É golpe" in lista
+    assert "sim:" not in lista and "5500" not in lista and "98765" not in lista
+    ns["guardiao"].fechar()
+
+
+def test_secao_8_sem_responsavel_so_avisa(notebook, capsys, tmp_path):
+    ns = _namespace_com_casos(tmp_path, notebook, capsys, cadastrar=False)
+    exec(_celula_golpe(notebook), ns)
+    assert "a responsável não está cadastrada" in capsys.readouterr().out
+    exec(_celula_com(notebook, "remetente_lucas"), ns)
+    assert "a responsável não está cadastrada" in capsys.readouterr().out
+    assert ns["bot"].alertas == []
+    ns["guardiao"].fechar()
+
+
+def test_encerrar_apaga_os_casos(notebook, capsys, tmp_path):
+    ns = _namespace_com_casos(tmp_path, notebook, capsys)
+    exec(_celula_golpe(notebook), ns)
+    arquivo = ns["CASOS_ARQUIVO"]
+    guardiao = ns["guardiao"]
+    assert arquivo.exists()
+    exec(_celula_com(notebook, "parar_servidor()"), ns)
+    assert not arquivo.exists() and guardiao.casos.listar() == [] and ns["guardiao"] is None
+    assert "casos apagados" in capsys.readouterr().out
+
+
+def test_encerrar_sem_guardiao_apaga_o_arquivo_de_casos(notebook, capsys, tmp_path):
+    arquivo = tmp_path / "casos.json"
+    arquivo.write_text('{"versao": 1, "casos": []}', encoding="utf-8")
+    ns = {"guardiao": None, "canal": None, "CASOS_ARQUIVO": arquivo}
+    exec(_celula_com(notebook, "parar_servidor()"), ns)
+    assert not arquivo.exists() and "casos apagados" in capsys.readouterr().out

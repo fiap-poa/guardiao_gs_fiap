@@ -14,7 +14,13 @@ Depois, `tratar(evento)` recebe tudo o que o canal entrega:
   descartados sem ler o texto e sem log;
 - `InicioBot`: o da pessoa idosa (reconhecida pelo id da conta) só a habilita, sem
   resposta do bot; o de qualquer outra pessoa vai ao cadastro, e a resposta sai pelo bot;
-- `RespostaAlerta`: o toque da responsável cadastrada vai a `ao_responder`.
+- `RespostaAlerta`: o toque da responsável cadastrada vai a `ao_responder` e à gestão de
+  casos (`casos.py`), que decide o desfecho.
+
+Com `analisador`, cada suspeita abre um caso (`self.casos`): o alerta com os botões vai
+pelo canal à responsável cadastrada; "É golpe" e o prazo sem resposta (10 min) avisam a
+pessoa idosa; "Era ele mesmo" libera o contato. Sem responsável ou com falha no envio, a
+exceção sobe ao `Analisador`, que reanalisa na próxima mensagem.
 
 O núcleo fala com o mensageiro só pela camada de canal. Erros logam só o tipo.
 """
@@ -22,10 +28,12 @@ O núcleo fala com o mensageiro só pela camada de canal. Erros logam só o tipo
 import sys
 import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable
 
-from guardiao.analise import Analisador
+from guardiao.analise import Analisador, ResultadoAnalise
 from guardiao.cadastro import CadastroResponsavel, ResultadoInicio
+from guardiao.casos import PRAZO_RESPOSTA, VARREDURA_S, GestorCasos, RepositorioCasos
 from guardiao.canal.base import CanalConectavel, InicioBot, MensagemRecebida, Recebido, RespostaAlerta
 from guardiao.filtro import Decisao, FiltroContatos
 
@@ -72,7 +80,16 @@ class Guardiao:
         ao_analisar: Callable[[MensagemRecebida], None] | None = None,
         ao_responder: Callable[[RespostaAlerta], None] | None = None,
         analisador: Analisador | None = None,
+        prazo_resposta: timedelta = PRAZO_RESPOSTA,
+        casos_arquivo: Path | str | None = None,
+        como_chama_idosa: str | None = None,
+        varredura_casos_s: float | None = VARREDURA_S,
     ):
+        """`casos_arquivo=None` guarda os casos só em memória; o notebook usa `backend/.local/`.
+
+        `como_chama_idosa` é como a responsável chama a pessoa idosa no alerta ("sua mãe");
+        o padrão é o nome dela.
+        """
         self.canal = canal
         self.nome_idosa = nome_idosa or getattr(canal, "nome_idosa", None) or NOME_IDOSA_PADRAO
         self._relogio = relogio
@@ -83,9 +100,25 @@ class Guardiao:
         self.analisador = analisador
         self._trava = threading.Lock()
         self._id_idosa = None
+        self._destinatario_idosa = None
         self._bot: dict | None = None
         self._conectado = False
         self._idosa_habilitada = False
+        self.casos = GestorCasos(
+            canal,
+            RepositorioCasos(casos_arquivo),
+            relogio=relogio,
+            prazo=prazo_resposta,
+            responsavel=lambda: self.cadastro.responsavel,
+            destinatario_idosa=self._para_idosa,
+            nome_idosa=self.nome_idosa,
+            como_chama_idosa=como_chama_idosa,
+            ao_alertar=self.filtro.registrar_alerta,
+            ao_liberar=self._liberar,
+            varredura_s=varredura_casos_s,
+        )
+        if analisador is not None:
+            analisador.ao_suspeitar = self._encadear_suspeita(analisador.ao_suspeitar)
 
     def __repr__(self) -> str:
         estado = self.estado()
@@ -131,11 +164,38 @@ class Guardiao:
         return bot
 
     def fechar(self) -> None:
-        """Fecha o canal. O estado em memória não é apagado: para recomeçar, crie outro `Guardiao`
-        (como o notebook faz ao rodar a seção 5 de novo)."""
+        """Para a varredura dos casos e fecha o canal. O estado em memória não é apagado (nem o
+        arquivo de casos): para recomeçar, crie outro `Guardiao` (como o notebook faz ao rodar a
+        seção 5 de novo); para apagar os casos, `casos.apagar_tudo()`."""
         with self._trava:
             self._conectado = False
+        self.casos.fechar()
         self.canal.fechar()
+
+    # ------------------------------------------------------------- casos
+
+    def _encadear_suspeita(self, antigo: Callable[[ResultadoAnalise], None] | None):
+        """O observador que o analisador já tinha roda primeiro; depois o caso é aberto."""
+
+        def ao_suspeitar(resultado: ResultadoAnalise) -> None:
+            if antigo is not None:
+                try:  # um observador com defeito não pode impedir o alerta
+                    antigo(resultado)
+                except Exception as erro:
+                    _avisar(f"ao_suspeitar falhou: {type(erro).__name__}")
+            self.casos.abrir(resultado)  # se levantar, o Analisador desfaz a suspeita
+
+        return ao_suspeitar
+
+    def _para_idosa(self):
+        """Destinatário do aviso à pessoa idosa: o do `/start` dela, ou o id da conta."""
+        return self._destinatario_idosa if self._destinatario_idosa is not None else self._id_idosa
+
+    def _liberar(self, remetente_id) -> None:
+        """ "Era ele mesmo": o contato vira conhecido e o analisador o esquece."""
+        self.filtro.liberar(remetente_id)
+        if self.analisador is not None:
+            self.analisador.esquecer(remetente_id)
 
     # ------------------------------------------------------------- eventos do canal
 
@@ -166,6 +226,7 @@ class Guardiao:
     def _tratar_inicio(self, inicio: InicioBot) -> ResultadoInicio | None:
         if self._id_idosa is not None and inicio.usuario_id == self._id_idosa:
             self._idosa_habilitada = True  # o bot já pode avisá-la; ele não responde a ela
+            self._destinatario_idosa = inicio.destinatario
             return None
         resultado = self.cadastro.tratar_inicio(inicio)
         if resultado.destinatario is not None:
@@ -180,7 +241,11 @@ class Guardiao:
         if responsavel is None or resposta.respondente_id != responsavel.usuario_id:
             return  # só a responsável cadastrada recebe alertas; outro toque não vale
         if self.ao_responder is not None:
-            self.ao_responder(resposta)
+            try:  # um observador com defeito não pode impedir o desfecho
+                self.ao_responder(resposta)
+            except Exception as erro:
+                _avisar(f"ao_responder falhou: {type(erro).__name__}")
+        self.casos.responder(resposta)
 
     # ------------------------------------------------------------- configuração
 
@@ -195,7 +260,7 @@ class Guardiao:
         return self.cadastro.link(bot["username"])
 
     def estado(self) -> dict:
-        """Conexão, cadastro e tamanhos da base (sem ids nem nomes)."""
+        """Conexão, cadastro, tamanhos da base e casos por estado (sem ids nem nomes)."""
         cadastro = self.cadastro.estado()
         contagens = self.filtro.contagens()
         return {
@@ -206,4 +271,5 @@ class Guardiao:
             "codigos_validos": cadastro["codigos_validos"],
             "conhecidos": contagens["conhecidos"],
             "observados": contagens["observados"],
+            "casos": self.casos.contagens(),
         }
