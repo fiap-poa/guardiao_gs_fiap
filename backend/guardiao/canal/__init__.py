@@ -7,7 +7,9 @@ em `base` não carregue as bibliotecas do Telegram.
 from guardiao.canal.base import (
     Alerta,
     Canal,
+    CanalConectavel,
     Contato,
+    ConversaAntiga,
     Handler,
     InicioBot,
     MensagemRecebida,
@@ -20,7 +22,9 @@ from guardiao.canal.base import (
 __all__ = [
     "Alerta",
     "Canal",
+    "CanalConectavel",
     "Contato",
+    "ConversaAntiga",
     "Handler",
     "InicioBot",
     "MensagemRecebida",

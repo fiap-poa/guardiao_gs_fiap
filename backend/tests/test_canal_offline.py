@@ -186,3 +186,48 @@ def test_bot_api_resposta_nao_json_levanta_sem_token():
         bot.get_me()
     assert str(erro.value) == "getMe: HTTP 502"
     assert erro.value.__suppress_context__
+
+
+class ClienteDialogosFalso:
+    """Cliente do Telethon falso: só `iter_dialogs` e `is_connected`."""
+
+    def __init__(self, dialogos):
+        self.dialogos = dialogos
+
+    async def iter_dialogs(self):
+        for dialogo in self.dialogos:
+            yield dialogo
+
+    def is_connected(self):
+        return False
+
+
+class Dialogo:
+    def __init__(self, id, is_user, name):
+        self.id = id
+        self.is_user = is_user
+        self._name = name
+
+    @property
+    def name(self):
+        raise AssertionError("o nome da conversa foi lido")
+
+
+def test_conversas_existentes_privada_e_is_user(tmp_path):
+    from guardiao.canal.base import ConversaAntiga
+
+    canal = TelegramCanal(1, "x", None, dir_sessao=tmp_path, usar_bot=False)
+    canal._cliente = ClienteDialogosFalso(
+        [Dialogo(7123456789, True, "Filha"), Dialogo(-1001234, False, "Grupo"), Dialogo(7555000111, True, "Bot")]
+    )
+    canal._conta_id = 7000000001  # já conectado: `conectar()` não abre a rede
+    try:
+        conversas = canal.conversas_existentes()
+    finally:
+        canal.fechar()
+    assert conversas == [
+        ConversaAntiga(7123456789, "privada"),
+        ConversaAntiga(-1001234, "grupo"),
+        ConversaAntiga(7555000111, "privada"),
+    ]
+    assert all(c.nome == "" and c.iniciada_em is None for c in conversas)

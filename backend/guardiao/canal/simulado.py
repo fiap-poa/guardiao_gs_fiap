@@ -22,6 +22,7 @@ from typing import Literal, Protocol
 from guardiao.canal.base import (
     Alerta,
     Contato,
+    ConversaAntiga,
     Handler,
     InicioBot,
     MensagemRecebida,
@@ -33,7 +34,6 @@ from guardiao.canal.cenarios import (
     CONVERSAS_ANTIGAS,
     ID_IDOSA,
     NOME_IDOSA,
-    ConversaAntiga,
     obter_cenario,
 )
 
@@ -52,6 +52,8 @@ class Saida(Protocol):
     def enviar_alerta(self, alerta: Alerta) -> str: ...
 
     def enviar_aviso(self, destinatario, texto: str) -> str: ...
+
+    def info_bot(self) -> dict: ...
 
     def fechar(self) -> None: ...
 
@@ -115,6 +117,25 @@ class CanalSimulado:
 
     # ------------------------------------------------------------- extras (como no TelegramCanal)
 
+    def conectar(self) -> str:
+        """A conta simulada já está "conectada": devolve o id da pessoa idosa."""
+        return self.id_idosa
+
+    def info_bot(self) -> dict | None:
+        """`{"id", "username"}` do bot da saída; sem saída, `None` (e nada toca a rede)."""
+        if self._saida is None:
+            return None
+        return self._saida.info_bot()
+
+    def enviar_start_ao_bot(self) -> None:
+        """Simula a conta da pessoa idosa tocando Iniciar: entrega o `InicioBot` dela ao handler.
+
+        Roda nesta thread, como a injeção. Nada sai pelo bot.
+        """
+        if self._handler is None:
+            raise RuntimeError("chame receber_mensagens(handler) antes de enviar o /start")
+        self._entregar(InicioBot(usuario_id=self.id_idosa, destinatario=self.id_idosa))
+
     def enviar_aviso(self, destinatario, texto: str) -> str:
         """Pessoa idosa → celular simulado; qualquer outro destinatário → bot."""
         if destinatario == self.id_idosa:
@@ -175,12 +196,15 @@ class CanalSimulado:
             raise ValueError(f"tipo de conversa inválido: {tipo!r}")
         with self._trava:
             self._celular.append(MensagemCelular("recebida", de or remetente_id, conversa, texto))
+        self._entregar(mensagem)
+        return mensagem
+
+    def _entregar(self, evento: Recebido) -> None:
         handler = self._handler
         try:
-            handler(mensagem)
+            handler(evento)
         except Exception as erro:  # como no canal Telegram: o tipo basta
             _avisar(f"handler falhou: {type(erro).__name__}")
-        return mensagem
 
     def injetar(self, cenario_id: str) -> list[MensagemRecebida]:
         """Injeta as mensagens de um cenário e devolve o que o handler recebeu."""

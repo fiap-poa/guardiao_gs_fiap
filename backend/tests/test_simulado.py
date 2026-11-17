@@ -460,3 +460,47 @@ def test_segredo_apagado_no_colab_sai_do_ambiente(monkeypatch):
     presenca = config.carregar_segredos_colab(["TELEGRAM_BOT_TOKEN", "GEMINI_API_KEY"])
     assert presenca == {"TELEGRAM_BOT_TOKEN": False, "GEMINI_API_KEY": False}
     assert "TELEGRAM_BOT_TOKEN" not in os.environ and "GEMINI_API_KEY" not in os.environ
+
+
+# --------------------------------------------------------------------------- extras para o Guardião (história 4)
+
+
+def test_conversa_antiga_mora_na_base_e_cenarios_a_reexporta():
+    from guardiao.canal import base, cenarios
+
+    assert cenarios.ConversaAntiga is base.ConversaAntiga
+    vazia = base.ConversaAntiga("x", "privada")
+    assert vazia.nome == "" and vazia.iniciada_em is None
+    assert "Família" not in repr(CONVERSAS_ANTIGAS[-1])
+
+
+def test_conectar_devolve_a_idosa_e_info_bot_sem_saida_e_none(sem_rede):
+    canal = CanalSimulado()
+    assert canal.conectar() == ID_IDOSA
+    assert canal.info_bot() is None
+
+
+def test_info_bot_delega_a_saida():
+    class ComInfo(SaidaFalsa):
+        def info_bot(self):
+            return {"id": 1, "username": "guardiao_teste_bot"}
+
+    assert CanalSimulado(saida=ComInfo()).info_bot() == {"id": 1, "username": "guardiao_teste_bot"}
+
+
+def test_enviar_start_ao_bot_entrega_o_inicio_da_idosa_nesta_thread():
+    saida = SaidaFalsa()
+    threads = []
+    canal = CanalSimulado(saida=saida)
+    eventos = []
+    canal.receber_mensagens(lambda e: (eventos.append(e), threads.append(threading.current_thread())))
+    canal.enviar_start_ao_bot()
+    [inicio] = eventos
+    assert isinstance(inicio, InicioBot) and inicio.usuario_id == ID_IDOSA == inicio.destinatario
+    assert inicio.parametro is None and threads == [threading.current_thread()]
+    assert saida.avisos == [] and canal.celular() == []
+
+
+def test_enviar_start_ao_bot_antes_de_receber_levanta():
+    with pytest.raises(RuntimeError, match="receber_mensagens"):
+        CanalSimulado().enviar_start_ao_bot()

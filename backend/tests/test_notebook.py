@@ -83,12 +83,27 @@ def test_notebook_cobre_o_roteiro(notebook):
         "carregar_segredos_colab",
         'MODO = "demonstracao"',
         "criar_canal(MODO)",
-        "canal.injetar(",
+        "Guardiao(canal, relogio=RELOGIO, ao_analisar=ANALISADAS.append",
+        "guardiao.conectar()",
+        "injetar_mostrando(canal.injetar, cenario.id)",
+        "RELOGIO.adiantar(7)",
+        "RELOGIO.voltar()",
+        "guardiao.link_cadastro()",
+        "guardiao.estado()",
         "formatar_celular(canal.celular())",
+        "definir_guardiao(guardiao)",
         "iniciar_em_segundo_plano",
         "serve_kernel_port_as_iframe",
+        "guardiao.fechar()",
     ):
         assert trecho in codigo, trecho
+
+
+def test_notebook_nao_mostra_texto_do_que_foi_descartado(notebook):
+    """A célula de injeção só mostra o texto do que foi para a análise (dados fictícios)."""
+    codigo = "\n".join(_codigo(notebook))
+    assert "ANALISADAS[ja_analisadas:]" in codigo and "texto não lido" in codigo
+    assert "RECEBIDOS" not in codigo  # o handler solto da história 3 virou o Guardião
 
 
 def test_notebook_nao_grava_nem_imprime_credencial(notebook):
@@ -134,3 +149,54 @@ def test_padroes_da_varredura_pegam_o_que_devem():
     assert TELEFONE_FORMATADO.search("+55 (" + "21) 98765-4321").group(1) == "21"
     assert TELEFONE_FORMATADO.search("+55 00 98765-1001").group(1) == "00"
     assert not TELEFONE_DIGITOS.search("7123456789")
+
+
+def _celula_com(notebook, trecho) -> str:
+    [fonte] = [f for f in _codigo(notebook) if trecho in f]
+    return fonte
+
+
+def _namespace_demonstracao():
+    from guardiao.canal.cenarios import CENARIOS
+    from guardiao.canal.simulado import CanalSimulado
+    from guardiao.recepcao import Guardiao, RelogioAjustavel
+
+    canal = CanalSimulado()
+    analisadas = []
+    relogio = RelogioAjustavel()
+    guardiao = Guardiao(canal, relogio=relogio, ao_analisar=analisadas.append)
+    guardiao.conectar()
+    return {
+        "MODO": "demonstracao",
+        "canal": canal,
+        "guardiao": guardiao,
+        "ANALISADAS": analisadas,
+        "CENARIOS": CENARIOS,
+        "RELOGIO": relogio,
+    }
+
+
+def test_celula_de_injecao_mostra_o_descarte_sem_o_texto(notebook, capsys):
+    from guardiao.canal.cenarios import obter_cenario
+
+    ns = _namespace_demonstracao()
+    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
+    saida = capsys.readouterr().out
+    assert "descarte (contato conhecido)" in saida and "descarte (grupo)" in saida
+    for cenario_id in ("contato_antigo_pede_dinheiro", "mensagem_em_grupo"):
+        for texto in obter_cenario(cenario_id).mensagens:
+            assert texto not in saida
+    assert "análise:" in saida and len(ns["ANALISADAS"]) == 6
+
+
+def test_celula_dos_7_dias_pula_sem_a_injecao(notebook, capsys):
+    ns = _namespace_demonstracao()
+    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
+    sete_dias = _celula_com(notebook, "RELOGIO.adiantar(7)")
+    capsys.readouterr()
+    exec(sete_dias, ns)
+    primeira = capsys.readouterr().out
+    assert "virou conhecido" in primeira and "agora: observado" in primeira
+    exec(sete_dias, ns)  # de novo: sim:novo-3 já é conhecido
+    assert "pulando" in capsys.readouterr().out
+    assert ns["RELOGIO"].deslocamento.total_seconds() == 0

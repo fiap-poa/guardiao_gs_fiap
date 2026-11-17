@@ -66,3 +66,38 @@ def test_pagina_usa_caminhos_relativos_e_nao_cita_endereco():
     assert b'href="styles.css"' in pagina and b'src="app.js"' in pagina
     assert b'"/styles.css"' not in pagina and b'"/app.js"' not in pagina
     assert b"127.0.0.1" not in pagina
+
+
+@pytest.fixture
+def guardiao_registrado():
+    from guardiao.app import definir_guardiao
+    from guardiao.canal.simulado import CanalSimulado
+    from guardiao.recepcao import Guardiao
+
+    guardiao = Guardiao(CanalSimulado())
+    definir_guardiao(guardiao)
+    yield guardiao
+    definir_guardiao(None)
+
+
+def test_estado_le_o_guardiao_registrado(guardiao_registrado):
+    from guardiao.canal.base import InicioBot
+
+    cliente = criar_app().test_client()
+    assert cliente.get("/api/estado").get_json() == {"conectado": False, "responsavel_cadastrada": False}
+    guardiao_registrado.conectar()
+    assert cliente.get("/api/estado").get_json() == {"conectado": True, "responsavel_cadastrada": False}
+    codigo = guardiao_registrado.cadastro.gerar_codigo()
+    guardiao_registrado.cadastro.tratar_inicio(InicioBot(9, 9, parametro=codigo, nome="Ana"))
+    assert cliente.get("/api/estado").get_json() == {"conectado": True, "responsavel_cadastrada": True}
+
+
+def test_sem_guardiao_registrado_tudo_falso(guardiao_registrado):
+    from guardiao.app import definir_guardiao
+
+    guardiao_registrado.conectar()
+    definir_guardiao(None)
+    assert criar_app().test_client().get("/api/estado").get_json() == {
+        "conectado": False,
+        "responsavel_cadastrada": False,
+    }

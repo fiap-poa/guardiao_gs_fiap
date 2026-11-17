@@ -25,6 +25,7 @@ from telethon.errors import PasswordHashInvalidError, SessionPasswordNeededError
 from guardiao.canal.base import (
     Alerta,
     Contato,
+    ConversaAntiga,
     Handler,
     InicioBot,
     MensagemRecebida,
@@ -110,14 +111,18 @@ def interpretar_update(update: dict) -> InicioBot | ToqueBot | None:
     mensagem = update.get("message")
     if mensagem:
         texto = mensagem.get("text") or ""
-        comando = texto.split(maxsplit=1)[0] if texto.strip() else ""
+        partes = texto.split()
+        comando = partes[0] if partes else ""
         chat = mensagem.get("chat") or {}
         remetente = mensagem.get("from") or {}
         if (comando == "/start" or comando.startswith("/start@")) and chat.get("type") == "private":
+            # `t.me/<bot>?start=<código>` chega como "/start <código>"
             return InicioBot(
                 usuario_id=remetente.get("id"),
                 destinatario=chat.get("id"),
                 recebido_em=_data_unix(mensagem.get("date")),
+                parametro=partes[1] if len(partes) > 1 else None,
+                nome=(remetente.get("first_name") or "").strip() or None,
             )
     return None
 
@@ -408,6 +413,26 @@ class TelegramCanal:
                 nome = " ".join(p for p in (usuario.first_name, usuario.last_name) if p)
                 contatos.append(Contato(id=usuario.id, nome=nome, telefone=usuario.phone or None))
             return contatos
+
+        return self._executar(listar())
+
+    def conversas_existentes(self) -> list[ConversaAntiga]:
+        """Diálogos que já existem na conta (arquivados incluídos), só com id e tipo.
+
+        Privada é diálogo com usuário (`is_user`, o que inclui bots); o resto (grupos e
+        canais) sai como `grupo`. O `iter_dialogs()` do Telethon traz para a memória também
+        a última mensagem e as entidades de cada diálogo; daqui só id e tipo são usados e
+        guardados, e o resto do diálogo é descartado sem uso.
+        """
+        self.conectar()
+        cliente = self._cliente
+
+        async def listar():
+            conversas = []
+            async for dialogo in cliente.iter_dialogs():
+                tipo = "privada" if dialogo.is_user else "grupo"
+                conversas.append(ConversaAntiga(conversa_id=dialogo.id, tipo=tipo))
+            return conversas
 
         return self._executar(listar())
 

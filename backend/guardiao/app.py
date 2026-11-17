@@ -1,7 +1,8 @@
 """Servidor Flask do Guardião (só em 127.0.0.1).
 
-Por ora expõe só o estado (conexão e cadastro da responsável, ainda fixos em falso)
-e serve a página estática de `frontend/`. Filtro, casos e tela completa vêm depois.
+Por ora expõe só o estado (conexão da conta e cadastro da responsável), lido do Guardião
+registrado por `definir_guardiao`, e serve a página estática de `frontend/`. Sem Guardião
+registrado, tudo é falso. Casos e tela completa vêm depois.
 No Colab, `iniciar_em_segundo_plano` sobe o servidor numa thread e o notebook o mostra
 por `serve_kernel_port_as_iframe`; por isso o frontend usa caminhos relativos.
 """
@@ -17,8 +18,24 @@ HOST = "127.0.0.1"
 PORTA = 5000
 
 
+_guardiao = None  # o `recepcao.Guardiao` cujo estado a tela mostra
+
+
+def definir_guardiao(guardiao) -> None:
+    """Registra o Guardião que `api/estado` lê (`None` desfaz o registro)."""
+    global _guardiao
+    _guardiao = guardiao
+
+
 def estado_atual() -> dict:
-    return {"conectado": False, "responsavel_cadastrada": False}
+    guardiao = _guardiao
+    if guardiao is None:
+        return {"conectado": False, "responsavel_cadastrada": False}
+    estado = guardiao.estado()
+    return {
+        "conectado": bool(estado["conectado"]),
+        "responsavel_cadastrada": bool(estado["responsavel_cadastrada"]),
+    }
 
 
 def criar_app() -> Flask:

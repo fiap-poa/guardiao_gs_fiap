@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
-from guardiao.canal.base import Contato
+from guardiao.canal.base import Contato, ConversaAntiga  # ConversaAntiga: reexportada
 
 Origem = Literal["novo", "antigo", "grupo"]
 Esperado = Literal["alerta", "alerta_era_ele_mesmo", "ignorado", "sem_alerta"]
@@ -25,19 +25,6 @@ Esperado = Literal["alerta", "alerta_era_ele_mesmo", "ignorado", "sem_alerta"]
 ID_IDOSA = "sim:idosa"
 NOME_IDOSA = "Dona Maria"
 TELEFONE_IDOSA = "5500987650000"
-
-
-@dataclass(frozen=True)
-class ConversaAntiga:
-    """Conversa que já existia na conta da pessoa idosa antes do pareamento.
-
-    Em conversa privada, `conversa_id` é igual ao id do remetente (como no Telegram).
-    """
-
-    conversa_id: str
-    tipo: Literal["privada", "grupo"]
-    nome: str
-    iniciada_em: datetime
 
 
 @dataclass(frozen=True)

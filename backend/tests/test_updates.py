@@ -83,3 +83,21 @@ def test_mensagem_de_evento_grupo_nao_le_texto_nem_ids():
     assert mensagem.tipo == "grupo"
     assert mensagem.texto is None
     assert mensagem.remetente_id is None and mensagem.conversa_id is None
+
+
+def test_start_traz_o_codigo_e_o_primeiro_nome():
+    update = _mensagem("/start abc_DEF-123")
+    update["message"]["from"]["first_name"] = "Ana"
+    evento = interpretar_update(update)
+    assert evento.parametro == "abc_DEF-123" and evento.nome == "Ana"
+    assert "abc_DEF-123" not in repr(evento) and "Ana" not in repr(evento)
+    assert interpretar_update(_mensagem("/start@guardiao_bot xyz")).parametro == "xyz"
+
+
+def test_start_sem_codigo_nem_nome():
+    evento = interpretar_update(_mensagem("/start"))
+    assert evento.parametro is None and evento.nome is None
+    update = _mensagem("/start   ")
+    update["message"]["from"]["first_name"] = "  "
+    evento = interpretar_update(update)
+    assert evento.parametro is None and evento.nome is None
