@@ -14,3 +14,15 @@ def test_nada_fora_de_canal_cita_telethon_ou_bot_api():
         if "canal" not in p.relative_to(GUARDIAO).parts and PADRAO.search(p.read_text(encoding="utf-8"))
     ]
     assert ocorrencias == []
+
+
+SDK_GEMINI = re.compile(r"google\.genai|from google import genai")
+
+
+def test_so_gemini_py_importa_o_sdk_do_gemini():
+    ocorrencias = [
+        str(p.relative_to(GUARDIAO))
+        for p in GUARDIAO.rglob("*.py")
+        if p.name != "gemini.py" and SDK_GEMINI.search(p.read_text(encoding="utf-8"))
+    ]
+    assert ocorrencias == []

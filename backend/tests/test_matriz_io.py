@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import stat
+import time
 from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -589,11 +590,68 @@ def test_receber_mensagens_registra_so_entrada_e_entrega_mensagem(tmp_path):
         evento = SimpleNamespace(is_private=True, sender_id=CONTA_C, chat_id=CONTA_C,
                                  raw_text="oi", date=None)
         canal._executar(callback(evento))
+        for _ in range(250):  # a entrega roda na thread das mensagens
+            if recebidos:
+                break
+            time.sleep(0.02)
     finally:
         canal.fechar()
     [mensagem] = recebidos
     assert isinstance(mensagem, MensagemRecebida)
     assert mensagem.tipo == "privada" and mensagem.remetente_id == CONTA_C and mensagem.tem_texto
+
+
+def test_mensagem_da_conta_chega_ao_handler_fora_do_loop_do_telethon(tmp_path):
+    """O handler (Gemini, `listar_contatos`) pode esperar o loop sem travar (história 5)."""
+    import threading
+
+    cliente = ClienteFalso(autorizado=True)
+    canal = _canal_com_cliente(tmp_path, cliente)
+    vistos = []
+
+    async def no_loop():
+        return threading.current_thread().name
+
+    def handler(mensagem):
+        vistos.append((mensagem.texto, threading.current_thread().name, canal._executar(no_loop(), timeout=5)))
+
+    textos = [str(n) for n in range(8)]
+    try:
+        canal.receber_mensagens(handler)
+        [(callback, _)] = cliente.handlers
+        for texto in textos:
+            evento = SimpleNamespace(is_private=True, sender_id=CONTA_C, chat_id=CONTA_C, raw_text=texto, date=None)
+            canal._executar(callback(evento), timeout=5)
+        for _ in range(250):
+            if len(vistos) == len(textos):
+                break
+            time.sleep(0.02)
+    finally:
+        canal.fechar()
+    assert [texto for texto, _, _ in vistos] == textos  # na ordem de chegada
+    assert {thread for _, thread, _ in vistos} == {"guardiao-mensagens_0"}  # uma thread só
+    assert {loop for _, _, loop in vistos} == {"guardiao-telethon"}
+
+
+def test_fechar_descarta_as_mensagens_da_fila(tmp_path):
+    import threading
+
+    cliente = ClienteFalso(autorizado=True)
+    canal = _canal_com_cliente(tmp_path, cliente)
+    liberar, entregues = threading.Event(), []
+
+    def handler(mensagem):
+        liberar.wait(5)
+        entregues.append(mensagem.texto)
+
+    canal.receber_mensagens(handler)
+    [(callback, _)] = cliente.handlers
+    for texto in ("1", "2", "3"):
+        evento = SimpleNamespace(is_private=True, sender_id=CONTA_C, chat_id=CONTA_C, raw_text=texto, date=None)
+        canal._executar(callback(evento), timeout=5)
+    threading.Timer(0.2, liberar.set).start()
+    canal.fechar()
+    assert entregues == ["1"]  # a que estava em análise termina; as da fila saem com o canal
 
 
 class CanalContaFalso:

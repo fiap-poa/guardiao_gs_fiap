@@ -9,8 +9,9 @@
 
 Depois, `tratar(evento)` recebe tudo o que o canal entrega:
 
-- `MensagemRecebida`: o filtro decide; só a de contato novo/observado vai a `ao_analisar`.
-  Grupo e conhecido são descartados sem ler o texto e sem log;
+- `MensagemRecebida`: o filtro decide; só a de contato novo/observado vai a `ao_analisar`
+  e ao `analisador` (Gemini e busca do parente, CAP-3 e CAP-4). Grupo e conhecido são
+  descartados sem ler o texto e sem log;
 - `InicioBot`: o da pessoa idosa (reconhecida pelo id da conta) só a habilita, sem
   resposta do bot; o de qualquer outra pessoa vai ao cadastro, e a resposta sai pelo bot;
 - `RespostaAlerta`: o toque da responsável cadastrada vai a `ao_responder`.
@@ -23,6 +24,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
+from guardiao.analise import Analisador
 from guardiao.cadastro import CadastroResponsavel, ResultadoInicio
 from guardiao.canal.base import CanalConectavel, InicioBot, MensagemRecebida, Recebido, RespostaAlerta
 from guardiao.filtro import Decisao, FiltroContatos
@@ -69,6 +71,7 @@ class Guardiao:
         relogio: Callable[[], datetime] = _agora,
         ao_analisar: Callable[[MensagemRecebida], None] | None = None,
         ao_responder: Callable[[RespostaAlerta], None] | None = None,
+        analisador: Analisador | None = None,
     ):
         self.canal = canal
         self.nome_idosa = nome_idosa or getattr(canal, "nome_idosa", None) or NOME_IDOSA_PADRAO
@@ -77,6 +80,7 @@ class Guardiao:
         self.cadastro = CadastroResponsavel(self.nome_idosa, relogio=relogio)
         self.ao_analisar = ao_analisar
         self.ao_responder = ao_responder
+        self.analisador = analisador
         self._trava = threading.Lock()
         self._id_idosa = None
         self._bot: dict | None = None
@@ -146,9 +150,17 @@ class Guardiao:
         return None
 
     def _tratar_mensagem(self, mensagem: MensagemRecebida) -> Decisao:
-        decisao = self.filtro.classificar(mensagem, self._relogio())
-        if decisao.analisar and self.ao_analisar is not None:
-            self.ao_analisar(mensagem)
+        agora = self._relogio()
+        decisao = self.filtro.classificar(mensagem, agora)
+        if not decisao.analisar:
+            return decisao
+        if self.ao_analisar is not None:
+            try:  # um observador com defeito não pode impedir a análise
+                self.ao_analisar(mensagem)
+            except Exception as erro:
+                _avisar(f"ao_analisar falhou: {type(erro).__name__}")
+        if self.analisador is not None:
+            self.analisador.analisar(mensagem, agora=agora, id_idosa=self._id_idosa)
         return decisao
 
     def _tratar_inicio(self, inicio: InicioBot) -> ResultadoInicio | None:

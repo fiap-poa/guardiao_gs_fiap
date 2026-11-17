@@ -83,7 +83,13 @@ def test_notebook_cobre_o_roteiro(notebook):
         "carregar_segredos_colab",
         'MODO = "demonstracao"',
         "criar_canal(MODO)",
-        "Guardiao(canal, relogio=RELOGIO, ao_analisar=ANALISADAS.append",
+        "Guardiao(\n    canal, relogio=RELOGIO, ao_analisar=ANALISADAS.append",
+        "criar_detector()",
+        "Analisador(detector, canal.listar_contatos, ao_suspeitar=SUSPEITAS.append, relogio=RELOGIO)",
+        "analisador=analisador",
+        "guardiao.analisador.ultimos()",
+        "CONJUNTO_CAP3",
+        "RODAR_CONJUNTO_CAP3 = False",
         "guardiao.conectar()",
         "injetar_mostrando(canal.injetar, cenario.id)",
         "RELOGIO.adiantar(7)",
@@ -156,23 +162,31 @@ def _celula_com(notebook, trecho) -> str:
     return fonte
 
 
-def _namespace_demonstracao():
+def _namespace_demonstracao(com_gemini=False):
+    from duble_gemini import DubleRegras
+    from guardiao.analise import Analisador, Detector
     from guardiao.canal.cenarios import CENARIOS
     from guardiao.canal.simulado import CanalSimulado
     from guardiao.recepcao import Guardiao, RelogioAjustavel
 
     canal = CanalSimulado()
-    analisadas = []
+    analisadas, suspeitas = [], []
     relogio = RelogioAjustavel()
-    guardiao = Guardiao(canal, relogio=relogio, ao_analisar=analisadas.append)
+    detector = analisador = None
+    if com_gemini:
+        detector = Detector(DubleRegras())
+        analisador = Analisador(detector, canal.listar_contatos, ao_suspeitar=suspeitas.append, relogio=relogio)
+    guardiao = Guardiao(canal, relogio=relogio, ao_analisar=analisadas.append, analisador=analisador)
     guardiao.conectar()
     return {
         "MODO": "demonstracao",
         "canal": canal,
         "guardiao": guardiao,
         "ANALISADAS": analisadas,
+        "SUSPEITAS": suspeitas,
         "CENARIOS": CENARIOS,
         "RELOGIO": relogio,
+        "detector": detector,
     }
 
 
@@ -200,3 +214,67 @@ def test_celula_dos_7_dias_pula_sem_a_injecao(notebook, capsys):
     exec(sete_dias, ns)  # de novo: sim:novo-3 já é conhecido
     assert "pulando" in capsys.readouterr().out
     assert ns["RELOGIO"].deslocamento.total_seconds() == 0
+
+
+def test_celula_de_deteccao_mostra_suspeitas_e_numero_verdadeiro(notebook, capsys):
+    from guardiao.canal.cenarios import obter_cenario
+
+    ns = _namespace_demonstracao(com_gemini=True)
+    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
+    injecao = capsys.readouterr().out
+    assert injecao.count("Gemini: SUSPEITA") == 2 and "Gemini: sem suspeita" in injecao
+    exec(_celula_com(notebook, "guardiao.analisador.ultimos()"), ns)
+    saida = capsys.readouterr().out
+    assert "número salvo nos contatos: Pedro Neto 5500987650003" in saida
+    assert "número salvo nos contatos: Lucas Filho 5500987650002" in saida
+    assert "suspeitas: 2" in saida and "sim:novo-3: sem suspeita" in saida
+    for cenario_id in ("contato_antigo_pede_dinheiro", "mensagem_em_grupo"):
+        for texto in obter_cenario(cenario_id).mensagens:
+            assert texto not in injecao + saida
+
+
+def test_celula_de_deteccao_sem_gemini_avisa(notebook, capsys):
+    ns = _namespace_demonstracao()
+    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
+    assert "Gemini:" not in capsys.readouterr().out
+    exec(_celula_com(notebook, "guardiao.analisador.ultimos()"), ns)
+    assert "detecção está desligada" in capsys.readouterr().out
+
+
+def test_celula_do_conjunto_cap3(notebook, capsys):
+    fonte = _celula_com(notebook, "RODAR_CONJUNTO_CAP3 = False")
+    ns = _namespace_demonstracao(com_gemini=True)
+    exec(fonte, ns)
+    assert "pulando" in capsys.readouterr().out and not ns["detector"].cliente.pedidos
+    exec(fonte.replace("RODAR_CONJUNTO_CAP3 = False", "RODAR_CONJUNTO_CAP3 = True"), ns)
+    assert "acertos: 8 de 8" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("com_gemini", [True, False])
+def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, monkeypatch, com_gemini):
+    import guardiao.canal.fabrica as fabrica
+    import guardiao.gemini as gemini
+    from duble_gemini import DubleRegras
+    from guardiao.analise import Detector
+    from guardiao.app import definir_guardiao
+    from guardiao.canal.simulado import CanalSimulado
+
+    detector = Detector(DubleRegras()) if com_gemini else None
+    monkeypatch.setattr(gemini, "criar_detector", lambda: detector)
+    monkeypatch.setattr(fabrica, "criar_canal", lambda modo: CanalSimulado())
+    ns = {"MODO": "demonstracao"}
+    try:
+        exec(_celula_com(notebook, "criar_canal(MODO)"), ns)
+        saida = capsys.readouterr().out
+        guardiao = ns["guardiao"]
+        if com_gemini:
+            assert guardiao.analisador is not None and guardiao.analisador.detector is detector
+            assert "detecção pelo Gemini: ligada" in saida
+            ns["canal"].injetar("golpe_classico")
+            assert [s.busca.numero for s in ns["SUSPEITAS"]] == ["5500987650003"]
+        else:
+            assert guardiao.analisador is None and "detecção pelo Gemini: desligada" in saida
+    finally:
+        if ns.get("guardiao") is not None:
+            ns["guardiao"].fechar()
+        definir_guardiao(None)

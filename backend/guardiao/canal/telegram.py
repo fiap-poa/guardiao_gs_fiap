@@ -13,6 +13,7 @@ import asyncio
 import os
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -257,6 +258,9 @@ class TelegramCanal:
         self._info_bot: dict | None = None
         self._parar = threading.Event()
         self._thread_bot: threading.Thread | None = None
+        # as mensagens da conta são entregues ao handler nesta thread, fora do loop do Telethon:
+        # o handler pode chamar o Gemini (demora) e `listar_contatos` (que espera o loop)
+        self._entregador: ThreadPoolExecutor | None = None
         self._offset: int | None = None
         self._pausa_erro = 3  # segundos de espera após falha no getUpdates
 
@@ -414,7 +418,7 @@ class TelegramCanal:
                 contatos.append(Contato(id=usuario.id, nome=nome, telefone=usuario.phone or None))
             return contatos
 
-        return self._executar(listar())
+        return self._executar(listar(), timeout=30)  # chamado da thread das mensagens (busca do parente)
 
     def conversas_existentes(self) -> list[ConversaAntiga]:
         """Diálogos que já existem na conta (arquivados incluídos), só com id e tipo.
@@ -543,13 +547,20 @@ class TelegramCanal:
             self.conectar()
             cliente = self._cliente
 
+            if self._entregador is None:
+                self._entregador = ThreadPoolExecutor(max_workers=1, thread_name_prefix="guardiao-mensagens")
+            entregador = self._entregador
+
             async def ao_receber(event):
                 try:
                     mensagem = mensagem_de_evento(event)
                 except Exception as erro:
                     _avisar(f"mensagem ignorada: {type(erro).__name__}")
                     return
-                _entregar(handler, mensagem)
+                try:  # uma thread só: as mensagens chegam ao handler na ordem
+                    entregador.submit(_entregar, handler, mensagem)
+                except RuntimeError:  # canal fechando
+                    _avisar("mensagem ignorada: canal fechado")
 
             async def registrar():
                 cliente.add_event_handler(ao_receber, events.NewMessage(incoming=True))
@@ -571,6 +582,9 @@ class TelegramCanal:
     def fechar(self) -> None:
         """Para o polling e desconecta o Telethon (a sessão continua salva)."""
         self._parar.set()
+        if self._entregador is not None:  # termina a mensagem em análise e descarta as da fila
+            self._entregador.shutdown(wait=True, cancel_futures=True)
+            self._entregador = None
         if self._thread_bot is not None:
             self._thread_bot.join(self._espera_polling + 15)
             self._thread_bot = None
