@@ -1,6 +1,8 @@
-"""Caminhos do backend e carga do `.env`.
+"""Caminhos do backend e carga das credenciais.
 
-Credenciais só existem em `backend/.env` (ignorado pelo git, modo 600).
+Credenciais só existem em `backend/.env` (ignorado pelo git, modo 600) ou nos Secrets do
+Colab, que `carregar_segredos_colab` copia para as variáveis de ambiente. Nenhum valor é
+impresso.
 """
 
 import os
@@ -30,6 +32,32 @@ def carregar_env(caminho: Path = ENV_PATH) -> bool:
         )
     load_dotenv(caminho, override=False)
     return True
+
+
+def carregar_segredos_colab(nomes) -> dict[str, bool]:
+    """Copia os Secrets do Colab para as variáveis de ambiente; devolve nome → presente.
+
+    Fora do Colab, devolve tudo falso sem erro. Secret ausente, vazio ou sem acesso
+    liberado ao notebook conta como ausente, e a variável de ambiente é removida.
+    """
+    nomes = list(nomes)
+    try:
+        from google.colab import userdata
+    except ImportError:
+        return {nome: False for nome in nomes}
+    presenca = {}
+    for nome in nomes:
+        try:
+            valor = (userdata.get(nome) or "").strip()
+        except Exception:  # SecretNotFoundError, NotebookAccessError…; o tipo não importa
+            valor = ""
+        if valor:
+            os.environ[nome] = valor
+        else:  # Secret apagado depois de uma execução não pode continuar "presente"
+            os.environ.pop(nome, None)
+        presenca[nome] = bool(valor)
+        valor = None
+    return presenca
 
 
 def exigir(nome: str) -> str:

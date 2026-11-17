@@ -1,4 +1,10 @@
-from guardiao.app import HOST, criar_app
+import json
+import socket
+import urllib.request
+
+import pytest
+
+from guardiao.app import HOST, criar_app, iniciar_em_segundo_plano, parar_servidor
 
 
 def test_estado_inicial():
@@ -14,7 +20,9 @@ def test_serve_frontend():
     assert pagina.status_code == 200 and b"/api/estado" not in pagina.data
     assert b"app.js" in pagina.data
     script = cliente.get("/app.js")
-    assert script.status_code == 200 and b"/api/estado" in script.data
+    # relativo, para funcionar no iframe do Colab (serve_kernel_port_as_iframe)
+    assert script.status_code == 200 and b'fetch("api/estado"' in script.data
+    assert b'"/api/estado"' not in script.data
     assert cliente.get("/styles.css").status_code == 200
     for sonda in ("/../backend/pytest.ini", "/..%2fbackend/pytest.ini", "/..%2Fbackend%2Fpytest.ini"):
         assert cliente.get(sonda).status_code == 404, sonda
@@ -22,3 +30,39 @@ def test_serve_frontend():
 
 def test_so_localhost():
     assert HOST == "127.0.0.1"
+
+
+def test_servidor_em_segundo_plano_responde_e_e_idempotente():
+    servidor = iniciar_em_segundo_plano(HOST, 0)
+    try:
+        assert iniciar_em_segundo_plano(HOST, 0) is servidor
+        sem_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with sem_proxy.open(f"http://{HOST}:{servidor.port}/api/estado", timeout=5) as resposta:
+            assert json.load(resposta) == {"conectado": False, "responsavel_cadastrada": False}
+    finally:
+        parar_servidor()
+    porta = servidor.port
+    with pytest.raises(OSError):  # URLError é OSError: o servidor parou de verdade
+        sem_proxy.open(f"http://{HOST}:{porta}/api/estado", timeout=2)
+    novo = iniciar_em_segundo_plano(HOST, porta)  # e liberou a porta
+    try:
+        assert novo is not servidor and novo.port == porta
+    finally:
+        parar_servidor()
+    parar_servidor()  # sem servidor no ar: não faz nada
+
+
+def test_porta_ocupada_levanta_oserror():
+    with socket.socket() as ocupante:
+        ocupante.bind((HOST, 0))
+        ocupante.listen()
+        with pytest.raises(OSError, match="em uso"):
+            iniciar_em_segundo_plano(HOST, ocupante.getsockname()[1])
+    parar_servidor()
+
+
+def test_pagina_usa_caminhos_relativos_e_nao_cita_endereco():
+    pagina = criar_app().test_client().get("/").data
+    assert b'href="styles.css"' in pagina and b'src="app.js"' in pagina
+    assert b'"/styles.css"' not in pagina and b'"/app.js"' not in pagina
+    assert b"127.0.0.1" not in pagina

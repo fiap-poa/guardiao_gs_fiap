@@ -1,4 +1,5 @@
-// Lê /api/estado e mostra o estado da conexão e do cadastro da responsável.
+// Lê api/estado e mostra o estado da conexão e do cadastro da responsável.
+// O caminho é relativo para funcionar também no iframe do Colab (serve_kernel_port_as_iframe).
 (function () {
   const campos = {
     conectado: { el: document.getElementById("conectado"), sim: "conectada", nao: "não conectada" },
@@ -19,7 +20,7 @@
 
   async function atualizar() {
     try {
-      const resposta = await fetch("/api/estado", { cache: "no-store" });
+      const resposta = await fetch("api/estado", { cache: "no-store" });
       if (!resposta.ok) throw new Error("HTTP " + resposta.status);
       mostrar(await resposta.json());
     } catch (_) {
