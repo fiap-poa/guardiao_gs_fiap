@@ -6,6 +6,9 @@ usado, vencido ou inventado recebe a mensagem de bot privado e não cadastra nin
 
 - O código tem 22 caracteres (`secrets.token_urlsafe(16)`, válido como payload do
   `/start`) e vale 30 minutos. Vários podem coexistir até o cadastro, que invalida todos.
+- `codigo_vigente()` (a tela) reaproveita o código válido enquanto faltarem mais de 5
+  minutos para ele vencer: a atualização periódica da tela não gera um código a cada pedido.
+  O uso único não muda: o cadastro invalida todos.
 - Uma responsável só: depois do cadastro, `gerar_codigo` falha, e um novo Iniciar dela sem
   código repete o "Pronto" sem mudar nada.
 
@@ -21,6 +24,7 @@ from typing import Callable, Literal
 from guardiao.canal.base import InicioBot
 
 VALIDADE_CODIGO = timedelta(minutes=30)
+MARGEM_CODIGO = timedelta(minutes=5)  # com menos que isso para vencer, a tela ganha um código novo
 TEXTO_BOT_PRIVADO = "Este bot é privado. Para usar o Guardião, abra o link mostrado na tela de configuração."
 
 MotivoInicio = Literal[
@@ -95,13 +99,33 @@ class CadastroResponsavel:
     def gerar_codigo(self) -> str:
         """Novo código de uso único, válido por 30 min. Falha depois do cadastro."""
         with self._trava:
+            return self._novo_codigo()
+
+    def codigo_vigente(self, margem: timedelta = MARGEM_CODIGO) -> str:
+        """O código válido que vence por último, se faltar mais que `margem`; senão, um novo.
+
+        Falha depois do cadastro, como `gerar_codigo`.
+        """
+        with self._trava:
             if self._responsavel is not None:
                 raise JaCadastrada("a responsável já está cadastrada")
             agora = self._relogio()
             self._descartar_vencidos(agora)
-            codigo = secrets.token_urlsafe(16)
-            self._codigos[codigo] = agora + self._validade
-            return codigo
+            if self._codigos:
+                codigo, vence = max(self._codigos.items(), key=lambda item: item[1])
+                if vence - agora > margem:
+                    return codigo
+            return self._novo_codigo()
+
+    def _novo_codigo(self) -> str:
+        """Chamado sob a trava."""
+        if self._responsavel is not None:
+            raise JaCadastrada("a responsável já está cadastrada")
+        agora = self._relogio()
+        self._descartar_vencidos(agora)
+        codigo = secrets.token_urlsafe(16)
+        self._codigos[codigo] = agora + self._validade
+        return codigo
 
     def link(self, usuario_bot: str, codigo: str | None = None) -> str:
         """Link do bot com o código (`t.me/<bot>?start=<código>`); gera um código se faltar."""

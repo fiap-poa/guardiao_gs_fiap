@@ -4,9 +4,15 @@
   --suave: #5b636d;
   --cartao: #ffffff;
   --borda: #dcd9d0;
+  --destaque: #1d4f91;
+  --destaque-texto: #ffffff;
   --ok: #1f7a4d;
+  --ok-fundo: #e5f3ec;
   --pendente: #9a5b00;
+  --pendente-fundo: #fbf0dd;
   --erro: #b42318;
+  --erro-fundo: #fbe7e5;
+  --neutro-fundo: #eceae4;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -15,29 +21,126 @@
     --suave: #a3a9b1;
     --cartao: #1f2226;
     --borda: #33373d;
+    --destaque: #8db8f2;
+    --destaque-texto: #10141a;
     --ok: #5cc994;
+    --ok-fundo: #173327;
     --pendente: #f0b35a;
+    --pendente-fundo: #3a2c14;
     --erro: #ff8a7a;
+    --erro-fundo: #3d1c19;
+    --neutro-fundo: #2a2d32;
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--fundo);
   color: var(--texto);
   font: 1.0625rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-main { max-width: 36rem; margin: 0 auto; padding: 2.5rem 1rem; }
+main { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
 h1 { margin: 0; font-size: 1.75rem; }
-.sub { margin: 0.25rem 0 1.5rem; color: var(--suave); }
-dl { margin: 0; background: var(--cartao); border: 1px solid var(--borda); border-radius: 10px; }
-dl > div {
+h2 { margin: 0; font-size: 1.3rem; }
+h3 { margin: 0 0 0.5rem; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; }
+.sub { margin: 0.25rem 0 1.25rem; color: var(--suave); }
+header .sub { margin-bottom: 1.5rem; }
+
+/* faixas de aviso */
+.faixa { margin: 0 0 1.25rem; padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid; }
+.faixa-erro { color: var(--erro); background: var(--erro-fundo); border-color: currentColor; }
+.faixa-aviso { color: var(--pendente); background: var(--pendente-fundo); border-color: currentColor; }
+
+/* resumo */
+.resumo { margin: 0 0 1.75rem; background: var(--cartao); border: 1px solid var(--borda); border-radius: 10px; }
+.resumo > div {
   display: flex; justify-content: space-between; gap: 1rem;
-  padding: 0.9rem 1rem; border-top: 1px solid var(--borda);
+  padding: 0.75rem 1rem; border-top: 1px solid var(--borda);
 }
-dl > div:first-child { border-top: 0; }
+.resumo > div:first-child { border-top: 0; }
 dt { color: var(--suave); }
 dd { margin: 0; font-weight: 600; text-align: right; }
 dd.sim { color: var(--ok); }
 dd.nao { color: var(--pendente); }
-.erro { color: var(--erro); }
+
+.bloco { margin-bottom: 2rem; }
+
+/* configuração */
+.passos {
+  display: grid; gap: 1rem; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+.passo {
+  background: var(--cartao); border: 1px solid var(--borda); border-radius: 10px;
+  padding: 1rem; display: flex; flex-direction: column; gap: 0.25rem;
+}
+.passo p { margin: 0 0 0.5rem; }
+.numero {
+  display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; flex: none;
+  border-radius: 50%; background: var(--neutro-fundo); font-size: 0.9rem;
+}
+.passo.feito { border-color: var(--ok); }
+.passo.feito .numero { background: var(--ok); color: var(--cartao); }
+.detalhe { color: var(--suave); font-size: 0.95rem; }
+.qr {
+  margin: 0.25rem 0 0.75rem; align-self: center;
+  background: #ffffff; border-radius: 8px; padding: 0.25rem; line-height: 0;
+}
+.qr img { display: block; width: 13rem; max-width: 100%; height: auto; image-rendering: pixelated; }
+.comando {
+  display: block; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--neutro-fundo);
+  font: 0.95rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere;
+}
+.botao {
+  align-self: center; display: inline-block; padding: 0.6rem 1.25rem; border-radius: 999px;
+  background: var(--destaque); color: var(--destaque-texto); font-weight: 600; text-decoration: none;
+}
+.botao:hover { filter: brightness(1.08); }
+.botao:focus-visible, .cenario:focus-visible { outline: 3px solid var(--destaque); outline-offset: 2px; }
+
+/* casos */
+.casos { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+.vazio { padding: 1rem; border: 1px dashed var(--borda); border-radius: 10px; color: var(--suave); }
+.caso {
+  background: var(--cartao); border: 1px solid var(--borda); border-left-width: 5px;
+  border-radius: 10px; padding: 0.8rem 1rem;
+}
+.caso-topo { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.hora { color: var(--suave); font-variant-numeric: tabular-nums; }
+.estado { font-size: 0.9rem; font-weight: 600; padding: 0.1rem 0.6rem; border-radius: 999px; }
+.quem { margin: 0.4rem 0 0.25rem; }
+.trecho {
+  margin: 0; padding: 0.4rem 0.75rem; border-left: 3px solid var(--borda);
+  color: var(--suave); font-style: italic; overflow-wrap: anywhere;
+}
+.trecho::before { content: "“"; }
+.trecho::after { content: "”"; }
+.avisado { margin: 0.5rem 0 0; font-size: 0.95rem; }
+.estado-aguardando { border-left-color: var(--pendente); }
+.estado-aguardando .estado { color: var(--pendente); background: var(--pendente-fundo); }
+.estado-golpe { border-left-color: var(--erro); }
+.estado-golpe .estado { color: var(--erro); background: var(--erro-fundo); }
+.estado-era_ele_mesmo { border-left-color: var(--ok); }
+.estado-era_ele_mesmo .estado { color: var(--ok); background: var(--ok-fundo); }
+.estado-sem_resposta { border-left-color: var(--suave); }
+.estado-sem_resposta .estado { color: var(--texto); background: var(--neutro-fundo); }
+
+/* celular do golpista */
+.golpista { padding: 1rem; border: 1px dashed var(--borda); border-radius: 12px; }
+.selo {
+  font-size: 0.8rem; font-weight: 600; vertical-align: middle; margin-left: 0.25rem;
+  padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--neutro-fundo); color: var(--suave);
+}
+.cenarios { display: grid; gap: 0.5rem; }
+.cenario {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; text-align: left;
+  width: 100%; padding: 0.6rem 0.8rem; border-radius: 8px; cursor: pointer;
+  background: var(--cartao); color: var(--texto); border: 1px solid var(--borda); font: inherit;
+}
+.cenario:hover:not(:disabled) { border-color: var(--destaque); }
+.cenario:disabled { cursor: progress; opacity: 0.6; }
+.cenario.enviando { opacity: 1; border-color: var(--destaque); }
+.cenario-rotulo { font-weight: 600; }
+.cenario-descricao { color: var(--suave); font-size: 0.9rem; }
+.resultado { margin: 0.75rem 0 0; min-height: 1.5em; }

@@ -4,17 +4,74 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Guardião da Família</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main>
-    <h1>Guardião da Família</h1>
-    <p class="sub">Estado do Guardião neste computador.</p>
-    <dl id="estado" aria-live="polite">
-      <div><dt>Conta da pessoa idosa</dt><dd id="conectado">carregando…</dd></div>
-      <div><dt>Responsável (tocou Iniciar no bot)</dt><dd id="responsavel">carregando…</dd></div>
+    <header>
+      <h1>Guardião da Família</h1>
+      <p class="sub">Tela da responsável: configuração e casos.</p>
+    </header>
+
+    <p id="fora-do-ar" class="faixa faixa-erro" role="alert" hidden>
+      Não consegui falar com o backend do Guardião. Confira se a seção 9 do notebook rodou
+      (o Flask precisa estar no ar); tento de novo sozinha.
+    </p>
+    <p id="parado" class="faixa faixa-aviso" hidden>
+      Guardião não está rodando. Rode a seção 5 do notebook (conectar o Guardião).
+    </p>
+
+    <dl id="resumo" class="resumo" aria-live="polite" hidden>
+      <div><dt>Modo</dt><dd id="resumo-modo">…</dd></div>
+      <div><dt>Conta da pessoa idosa</dt><dd id="resumo-conta">…</dd></div>
+      <div><dt>Responsável (tocou Iniciar no bot)</dt><dd id="resumo-responsavel">…</dd></div>
     </dl>
-    <p id="erro" class="erro" hidden>Não consegui falar com o backend do Guardião.</p>
+
+    <section id="configuracao" class="bloco" hidden>
+      <h2>Configuração</h2>
+      <p class="sub">Dois passos. Depois deles, esta tela mostra os casos.</p>
+      <div class="passos">
+        <article id="passo-conta" class="passo">
+          <h3><span class="numero" aria-hidden="true">1</span> Conectar a conta da pessoa idosa</h3>
+          <p id="conta-texto">Carregando…</p>
+          <figure id="conta-qr" class="qr" hidden>
+            <img id="conta-qr-img" alt="QR code para conectar a conta do Telegram da pessoa idosa">
+          </figure>
+          <p id="conta-detalhe" class="detalhe" hidden></p>
+          <code id="conta-comando" class="comando" hidden></code>
+        </article>
+        <article id="passo-bot" class="passo">
+          <h3><span class="numero" aria-hidden="true">2</span> Abrir o bot no celular da responsável</h3>
+          <p id="bot-texto">Carregando…</p>
+          <figure id="bot-qr" class="qr" hidden>
+            <img id="bot-qr-img" alt="QR code com o link do bot do Guardião">
+          </figure>
+          <a id="bot-abrir" class="botao" target="_blank" rel="noopener noreferrer" hidden>Abrir o bot</a>
+          <p id="bot-detalhe" class="detalhe" hidden></p>
+        </article>
+      </div>
+    </section>
+
+    <section id="casos" class="bloco" hidden>
+      <h2>Casos</h2>
+      <p class="sub">
+        Atualizada a cada poucos segundos. Para responder, use os botões do alerta no Telegram:
+        esta tela só acompanha.
+      </p>
+      <p id="casos-vazio" class="vazio" hidden>Nenhum caso até agora. Quando um número novo disser ser parente e pedir dinheiro, o caso aparece aqui.</p>
+      <ol id="casos-lista" class="casos"></ol>
+    </section>
+
+    <section id="golpista" class="bloco golpista" hidden>
+      <h2>Celular do golpista <span class="selo">demonstração</span></h2>
+      <p class="sub">
+        Cada botão faz as mensagens de um cenário fictício chegarem ao celular simulado da
+        Dona Maria. Com a responsável cadastrada, o golpe vira alerta no Telegram dela.
+      </p>
+      <div id="golpista-botoes" class="cenarios"></div>
+      <p id="golpista-resultado" class="resultado" aria-live="polite"></p>
+    </section>
   </main>
   <script src="app.js"></script>
 </body>

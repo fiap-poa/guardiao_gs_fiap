@@ -123,7 +123,8 @@ def test_secoes_numeradas_e_sem_promessa_de_proxima_versao_do_alerta(notebook):
     assert "## 8. Alerta, toque e desfecho" in titulos
     texto = "\n".join(_fonte(c) for c in notebook["cells"])
     assert "próximas versões" not in texto
-    assert texto.count("próxima versão") == 1 and "tela completa do familiar entra na próxima versão" in texto
+    assert "próxima versão" not in texto  # história 7: a tela do familiar existe
+    assert "tela do familiar (seção 9) mostra a configuração e os casos" in texto
     assert "Teste do Guardião" not in texto  # o aviso de teste saiu: os avisos agora são de verdade
 
 
@@ -478,3 +479,103 @@ def test_encerrar_sem_guardiao_apaga_o_arquivo_de_casos(notebook, capsys, tmp_pa
     ns = {"guardiao": None, "canal": None, "CASOS_ARQUIVO": arquivo}
     exec(_celula_com(notebook, "parar_servidor()"), ns)
     assert not arquivo.exists() and "casos apagados" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- seções 5 e 9 (história 7)
+
+
+class _CanalRealSemSessao:
+    """Canal real falso: `conectar` falha por falta de sessão; tem `login_qr` (a tela o usa)."""
+
+    def __init__(self, erro="SemSessao"):
+        self.erro = erro
+        self.fechado = False
+
+    def login_qr(self, mostrar_qr, pedir_senha):
+        raise AssertionError("a seção 5 não começa o login: quem começa é a tela")
+
+    def conectar(self):
+        import guardiao.canal.telegram as telegram
+
+        raise getattr(telegram, self.erro)("a sessão não está logada; rode `login`")
+
+    def info_bot(self):
+        return {"id": 1, "username": "guardiao_teste_bot"}
+
+    def listar_contatos(self):
+        return []
+
+    def fechar(self):
+        self.fechado = True
+
+
+@pytest.mark.parametrize("erro", ["SemSessao", "SessaoNaoAutorizada"])
+def test_secao_5_modo_real_sem_sessao_mantem_o_guardiao_registrado(notebook, capsys, monkeypatch, tmp_path, erro):
+    import guardiao.app as app_mod
+    import guardiao.canal.fabrica as fabrica
+    import guardiao.config as config
+    import guardiao.gemini as gemini
+
+    canal = _CanalRealSemSessao(erro)
+    monkeypatch.setattr(gemini, "criar_detector", lambda: None)
+    monkeypatch.setattr(fabrica, "criar_canal", lambda modo: canal)
+    monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)
+    ns = {"MODO": "real"}
+    try:
+        exec(_celula_com(notebook, "criar_canal(MODO)"), ns)
+        saida = capsys.readouterr().out
+        guardiao = ns["guardiao"]
+        assert guardiao is not None and app_mod._guardiao is guardiao
+        assert not guardiao.estado()["conectado"] and guardiao.modo == "real"
+        assert "a tela (seção 9) mostra o QR da conta" in saida and "não conectou" not in saida
+        assert "python -m guardiao.verificar login" in saida
+        assert not canal.fechado
+    finally:
+        app_mod.definir_guardiao(None)
+        if ns.get("guardiao") is not None:
+            ns["guardiao"].fechar()
+
+
+def test_secao_5_modo_demonstracao_com_falha_nao_registra(notebook, capsys, monkeypatch, tmp_path):
+    import guardiao.app as app_mod
+    import guardiao.canal.fabrica as fabrica
+    import guardiao.config as config
+    import guardiao.gemini as gemini
+    from guardiao.canal.simulado import CanalSimulado
+
+    class Quebrado(CanalSimulado):
+        def conectar(self):
+            raise ConnectionError("falhou")
+
+    monkeypatch.setattr(gemini, "criar_detector", lambda: None)
+    monkeypatch.setattr(fabrica, "criar_canal", lambda modo: Quebrado())
+    monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)
+    anterior = _guardiao_anterior()
+    app_mod.definir_guardiao(anterior)  # a célula rodou antes e conectou
+    ns = {"MODO": "demonstracao", "guardiao": anterior}
+    try:
+        exec(_celula_com(notebook, "criar_canal(MODO)"), ns)
+        registrado = app_mod._guardiao
+    finally:
+        app_mod.definir_guardiao(None)
+    assert anterior.canal._handler is None and not anterior.conectado  # o anterior foi fechado
+    assert ns["guardiao"] is None and registrado is None  # e a tela não o mostra mais
+    assert "o Guardião não conectou (ConnectionError)" in capsys.readouterr().out
+
+
+def _guardiao_anterior():
+    from guardiao.canal.simulado import CanalSimulado
+    from guardiao.recepcao import Guardiao
+
+    guardiao = Guardiao(CanalSimulado(), varredura_casos_s=None)
+    guardiao.conectar()
+    return guardiao
+
+
+def test_secao_9_tela_maior_e_texto_novo(notebook):
+    fonte = _celula_com(notebook, "serve_kernel_port_as_iframe")
+    assert 'height=900' in fonte and "height=420" not in fonte
+    [texto] = [_fonte(c) for c in notebook["cells"] if _fonte(c).startswith("## 9. Tela do familiar")]
+    for trecho in ("Abrir o bot", "celular do golpista", "não responde casos", "caminhos relativos", "duas etapas"):
+        assert trecho in texto, trecho
+    assert "api/estado" not in texto

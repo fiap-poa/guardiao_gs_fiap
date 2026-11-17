@@ -249,15 +249,36 @@ class Guardiao:
 
     # ------------------------------------------------------------- configuração
 
-    def link_cadastro(self) -> str:
-        """Link do bot com um código de uso único novo, para a responsável tocar Iniciar."""
+    @property
+    def modo(self) -> str:
+        """ "demonstracao" quando o canal injeta cenários (canal simulado); senão "real"."""
+        return "demonstracao" if callable(getattr(self.canal, "injetar", None)) else "real"
+
+    @property
+    def conectado(self) -> bool:
+        return self._conectado
+
+    def _usuario_bot(self) -> str:
         bot = self._bot if self._bot is not None else self._info_bot()
         if bot is None:
             raise SemBot("sem bot do Guardião: defina TELEGRAM_BOT_TOKEN para gerar o link de cadastro")
         self._bot = bot
         if not bot.get("username"):
             raise SemBot("o bot do Guardião não tem username")
-        return self.cadastro.link(bot["username"])
+        return bot["username"]
+
+    def link_cadastro(self) -> str:
+        """Link do bot com um código de uso único novo, para a responsável tocar Iniciar."""
+        return self.cadastro.link(self._usuario_bot())
+
+    def link_cadastro_vigente(self) -> str:
+        """Como `link_cadastro`, mas reaproveita o código vigente (o que a tela mostra).
+
+        O código só muda quando faltam 5 minutos ou menos para ele vencer: a tela, que pede o
+        link a cada poucos segundos, não gera um código novo a cada pedido.
+        """
+        usuario = self._usuario_bot()
+        return self.cadastro.link(usuario, self.cadastro.codigo_vigente())
 
     def estado(self) -> dict:
         """Conexão, cadastro, tamanhos da base e casos por estado (sem ids nem nomes)."""
