@@ -16,7 +16,7 @@ Este módulo não importa o Telegram: a fábrica (`fabrica.py`) monta a saída.
 import sys
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol
 
 from guardiao.canal.base import (
@@ -38,6 +38,8 @@ from guardiao.canal.cenarios import (
 )
 
 NOME_GUARDIAO = "Guardião da Família"
+# horário de Brasília: UTC−3 fixo (o Brasil não tem horário de verão); o Colab roda em UTC
+FUSO_BRASILIA = timezone(timedelta(hours=-3), "Brasília")
 
 
 class SemSaida(RuntimeError):
@@ -245,12 +247,12 @@ def descrever_recebido(evento: Recebido) -> str:
 
 
 def formatar_celular(linhas: list[MensagemCelular], nome_idosa: str = NOME_IDOSA) -> str:
-    """O celular simulado como texto."""
+    """O celular simulado como texto, com os horários de Brasília."""
     saida = [f"Celular de {nome_idosa}"]
     if not linhas:
         saida.append("  (nada por enquanto)")
     for linha in linhas:
-        hora = linha.em.astimezone().strftime("%H:%M")
+        hora = linha.em.astimezone(FUSO_BRASILIA).strftime("%H:%M")
         marca = ">>" if linha.tipo == "aviso" else "  "
         saida.append(f"{marca} [{hora}] {linha.de}: {linha.texto}")
     return "\n".join(saida)

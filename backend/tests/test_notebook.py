@@ -1,15 +1,20 @@
-"""Notebook do Colab e varredura do repositório (história 3)."""
+"""Notebook do Colab e varredura do repositório (histórias 3 a 8).
+
+A história 8 roda o notebook inteiro, célula por célula e em ordem, com dublês do bot e do
+Gemini (`_rodar_notebook`), além das checagens por trecho.
+"""
 
 import json
 import re
+import threading
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 RAIZ = Path(__file__).resolve().parents[2]
 NOTEBOOK = RAIZ / "notebook" / "guardiao_colab.ipynb"
 PASTAS_VARRIDAS = [RAIZ / "backend", RAIZ / "frontend", RAIZ / "notebook"]
+ARQUIVOS_VARRIDOS = [RAIZ / "README.md"]  # história 8: o README vai no ZIP da entrega
 EXTENSOES = {".py", ".js", ".html", ".css", ".ipynb", ".md", ".txt", ".json", ".toml", ".example", ".ini"}
 # fora da varredura: ambiente, sessão do Telethon, evidências locais, caches e o .env com as credenciais
 PASTAS_EXCLUIDAS = {".venv", ".local", "evidencias", "__pycache__"}
@@ -26,6 +31,7 @@ TELEFONE_FORMATADO = re.compile(r"\+55[\s.-]*\(?([0-9]{2})\)?[\s.-]*[0-9]{4,5}[\
 
 
 def _arquivos():
+    yield from (arquivo for arquivo in ARQUIVOS_VARRIDOS if arquivo.exists())
     for pasta in PASTAS_VARRIDAS:
         for caminho in pasta.rglob("*"):
             relativo = caminho.relative_to(pasta).parts
@@ -88,50 +94,69 @@ def test_notebook_cobre_o_roteiro(notebook):
         "criar_detector()",
         "Analisador(detector, canal.listar_contatos, ao_suspeitar=SUSPEITAS.append, relogio=RELOGIO)",
         "analisador=analisador",
-        "guardiao.analisador.ultimos()",
         "CONJUNTO_CAP3",
         "RODAR_CONJUNTO_CAP3 = False",
         "guardiao.conectar()",
-        "injetar_mostrando(canal.injetar, cenario.id)",
-        "RELOGIO.adiantar(7)",
-        "RELOGIO.voltar()",
-        "guardiao.link_cadastro()",
-        "guardiao.estado()",
-        "formatar_celular(canal.celular())",
         "definir_guardiao(guardiao)",
         "iniciar_em_segundo_plano",
         "serve_kernel_port_as_iframe",
+        "guardiao.link_cadastro_vigente()",
+        "ESPERA_CADASTRO_S = 300",
+        "esperar_cadastro(guardiao, ESPERA_CADASTRO_S)",
+        'abrir_caso(guardiao, ANALISADAS, "golpe_classico")',
+        "TOQUE_SIMULADO = False",
+        "ESPERA_TOQUE_S = 180",
+        "injetar_mostrando(guardiao, ANALISADAS, canal.injetar, cenario_id)",
+        "conferir_sinal(guardiao, SUSPEITAS",
+        "mostrar_deteccao(guardiao, SUSPEITAS)",
+        "RELOGIO.adiantar(7)",
+        "RELOGIO.voltar()",
+        "formatar_celular(canal.celular())",
+        "guardiao.casos.verificar_prazos()",
+        "guardiao.casos.listar()",
+        "guardiao.casos.apagar_tudo()",
         "guardiao.fechar()",
+        "apagar_sessao(canal_encerrado, LOCAL_DIR)",
         # história 6: alerta, toque, desfecho e casos
         "PRAZO_RESPOSTA = timedelta(minutes=10)",
         'COMO_CHAMA_IDOSA = "sua mãe"',
         'CASOS_ARQUIVO = LOCAL_DIR / "casos.json"',
         "prazo_resposta=PRAZO_RESPOSTA, casos_arquivo=CASOS_ARQUIVO, como_chama_idosa=COMO_CHAMA_IDOSA",
-        "TOQUE_SIMULADO = False",
-        "guardiao.casos.verificar_prazos()",
-        "guardiao.casos.listar()",
-        "guardiao.casos.apagar_tudo()",
     ):
         assert trecho in codigo, trecho
 
 
-def test_secoes_numeradas_e_sem_promessa_de_proxima_versao_do_alerta(notebook):
+def test_secoes_numeradas_na_ordem_do_sinal_de_sucesso(notebook):
     titulos = [
         _fonte(c).splitlines()[0] for c in notebook["cells"] if c["cell_type"] == "markdown" and _fonte(c).startswith("## ")
     ]
-    assert [t.split(".")[0] for t in titulos] == [f"## {n}" for n in range(1, 11)]
-    assert "## 8. Alerta, toque e desfecho" in titulos
+    assert [t.split(".")[0] for t in titulos] == [f"## {n}" for n in range(1, 13)]
+    for titulo in (
+        "## 5. Conectar o Guardião",
+        "## 6. Tela do familiar",
+        "## 7. Cadastro da responsável",
+        '## 8. Golpe clássico: alerta e toque "É golpe"',
+        "## 9. Os três cenários sem alerta",
+        "## 10. Conferência do sinal de sucesso",
+        "## 11. Extras (opcional)",
+        "## 12. Encerrar",
+    ):
+        assert titulo in titulos, titulo
     texto = "\n".join(_fonte(c) for c in notebook["cells"])
-    assert "próximas versões" not in texto
-    assert "próxima versão" not in texto  # história 7: a tela do familiar existe
-    assert "tela do familiar (seção 9) mostra a configuração e os casos" in texto
+    assert "próximas versões" not in texto and "próxima versão" not in texto
     assert "Teste do Guardião" not in texto  # o aviso de teste saiu: os avisos agora são de verdade
+    assert "Executar tudo" in texto and "Executar anteriores" in texto
+    assert "seção 9)" not in _fonte(notebook["cells"][9]) + _codigo(notebook)[4]  # a tela agora é a seção 6
 
 
 def test_notebook_nao_mostra_texto_do_que_foi_descartado(notebook):
-    """A célula de injeção só mostra o texto do que foi para a análise (dados fictícios)."""
+    """A injeção passa por `roteiro.injetar_mostrando`, que só mostra o texto do que foi analisado."""
+    from pathlib import Path as _Path
+
     codigo = "\n".join(_codigo(notebook))
-    assert "ANALISADAS[ja_analisadas:]" in codigo and "texto não lido" in codigo
+    roteiro = (_Path(__file__).resolve().parents[1] / "guardiao" / "roteiro.py").read_text(encoding="utf-8")
+    assert "injetar_mostrando(guardiao, ANALISADAS" in codigo
+    assert "analisadas[ja_analisadas:]" in roteiro and "texto não lido" in roteiro
     assert "RECEBIDOS" not in codigo  # o handler solto da história 3 virou o Guardião
 
 
@@ -144,6 +169,10 @@ def test_notebook_nao_grava_nem_imprime_credencial(notebook):
         if "print(" in linha:
             assert not re.search(r"\{(token|credencial|valor|os\.environ\[)", linha), linha
             assert "os.environ.get(nome)}" not in linha, linha
+
+
+def test_readme_existe_e_entra_na_varredura():
+    assert RAIZ / "README.md" in list(_arquivos())
 
 
 def test_varredura_sem_token_nem_chave():
@@ -185,97 +214,324 @@ def _celula_com(notebook, trecho) -> str:
     return fonte
 
 
-def _namespace_demonstracao(com_gemini=False):
+# --------------------------------------------------------------------------- notebook inteiro, em ordem (história 8)
+
+LOCAIS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _descartados() -> list[str]:
+    from guardiao.canal.cenarios import obter_cenario
+
+    return [t for c in ("contato_antigo_pede_dinheiro", "mensagem_em_grupo") for t in obter_cenario(c).mensagens]
+
+
+@pytest.fixture
+def so_local(monkeypatch):
+    """Rede proibida, menos o HTTP local da tela (a conferência lê `api/casos` em 127.0.0.1)."""
+    import socket
+
+    conectar, resolver = socket.socket.connect, socket.getaddrinfo
+
+    def connect(self, endereco):
+        if isinstance(endereco, tuple) and endereco[0] in LOCAIS:
+            return conectar(self, endereco)
+        raise AssertionError("tentou acessar a rede")
+
+    def getaddrinfo(host, *args, **kwargs):
+        if host in LOCAIS:
+            return resolver(host, *args, **kwargs)
+        raise AssertionError("tentou acessar a rede")
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+
+
+class _Responsavel:
+    """A responsável, numa thread: toca Iniciar pelo link do notebook e os botões do alerta."""
+
+    def __init__(self, ns, bot, iniciar=True, tocar_golpe=True):
+        self.ns, self.bot = ns, bot
+        self.iniciar, self.tocar_golpe = iniciar, tocar_golpe
+        self.parar = threading.Event()
+        self.thread = threading.Thread(target=self._rodar, name="responsavel-teste", daemon=True)
+        self.thread.start()
+
+    def _rodar(self):
+        from guardiao.canal.base import InicioBot
+        from test_casos import RESPONSAVEL
+
+        while not self.parar.wait(0.02):
+            guardiao, link = self.ns.get("guardiao"), self.ns.get("LINK_CADASTRO")
+            if guardiao is None:
+                continue
+            if self.iniciar and link and not guardiao.cadastro.cadastrada:
+                codigo = link.split("?start=")[1]
+                self.bot.handler(InicioBot(RESPONSAVEL, RESPONSAVEL, parametro=codigo, nome="Ana"))
+            pedro = guardiao.casos.caso_de("sim:novo-1")
+            if self.tocar_golpe and pedro is not None and pedro.estado == "aguardando":
+                self.bot.tocar("golpe", pedro.id)
+
+    def fim(self):
+        self.parar.set()
+        self.thread.join(5)
+
+
+def _rodar_notebook(
+    notebook,
+    monkeypatch,
+    tmp_path,
+    capsys,
+    com_bot=True,
+    com_gemini=True,
+    iniciar=True,
+    tocar_golpe=True,
+    trocas=(),
+    sem_encerrar=False,
+):
+    """Roda as células de código do notebook em ordem num namespace só, como o *Executar tudo*.
+
+    Dublês: canal simulado com `test_casos.DubleBot` na saída, `duble_gemini.DubleRegras`,
+    `carregar_env` neutralizado, Flask na porta 0 e `backend/.local` trocado por `tmp_path`.
+    Devolve o namespace, o bot e a saída de cada célula.
+    """
+    import functools
+
+    import guardiao.app as app_mod
+    import guardiao.canal.fabrica as fabrica
+    import guardiao.config as config
+    import guardiao.gemini as gemini
     from duble_gemini import DubleRegras
-    from guardiao.analise import Analisador, Detector
-    from guardiao.canal.cenarios import CENARIOS
+    from guardiao.analise import Detector
     from guardiao.canal.simulado import CanalSimulado
-    from guardiao.recepcao import Guardiao, RelogioAjustavel
+    from test_casos import DubleBot
 
-    canal = CanalSimulado()
-    analisadas, suspeitas = [], []
-    relogio = RelogioAjustavel()
-    detector = analisador = None
-    if com_gemini:
-        detector = Detector(DubleRegras())
-        analisador = Analisador(detector, canal.listar_contatos, ao_suspeitar=suspeitas.append, relogio=relogio)
-    guardiao = Guardiao(canal, relogio=relogio, ao_analisar=analisadas.append, analisador=analisador)
-    guardiao.conectar()
-    return {
-        "MODO": "demonstracao",
-        "canal": canal,
-        "guardiao": guardiao,
-        "ANALISADAS": analisadas,
-        "SUSPEITAS": suspeitas,
-        "CENARIOS": CENARIOS,
-        "RELOGIO": relogio,
-        "detector": detector,
-    }
+    duble_bot = DubleBot() if com_bot else None
+    monkeypatch.chdir(RAIZ / "notebook")  # o Colab abre o notebook da pasta dele
+    monkeypatch.setattr(config, "carregar_env", lambda *a, **k: False)  # nada de backend/.env
+    monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)
+    monkeypatch.setattr(fabrica, "criar_canal", lambda modo: CanalSimulado(saida=duble_bot))
+    monkeypatch.setattr(gemini, "criar_detector", lambda: Detector(DubleRegras()) if com_gemini else None)
+    monkeypatch.setattr(app_mod, "iniciar_em_segundo_plano", functools.partial(app_mod.iniciar_em_segundo_plano, porta=0))
+    for nome, presente in (("TELEGRAM_BOT_TOKEN", com_bot), ("GEMINI_API_KEY", com_gemini)):
+        if presente:
+            monkeypatch.setenv(nome, "dublê")
+        else:
+            monkeypatch.delenv(nome, raising=False)
+    for nome in ("GEMINI_MODELO", "TELEGRAM_API_ID", "TELEGRAM_API_HASH"):
+        monkeypatch.delenv(nome, raising=False)
 
-
-def test_celula_de_injecao_mostra_o_descarte_sem_o_texto(notebook, capsys):
-    from guardiao.canal.cenarios import obter_cenario
-
-    ns = _namespace_demonstracao()
-    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
-    saida = capsys.readouterr().out
-    assert "descarte (contato conhecido)" in saida and "descarte (grupo)" in saida
-    for cenario_id in ("contato_antigo_pede_dinheiro", "mensagem_em_grupo"):
-        for texto in obter_cenario(cenario_id).mensagens:
-            assert texto not in saida
-    assert "análise:" in saida and len(ns["ANALISADAS"]) == 6
-
-
-def test_celula_dos_7_dias_pula_sem_a_injecao(notebook, capsys):
-    ns = _namespace_demonstracao()
-    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
-    sete_dias = _celula_com(notebook, "RELOGIO.adiantar(7)")
-    capsys.readouterr()
-    exec(sete_dias, ns)
-    primeira = capsys.readouterr().out
-    assert "virou conhecido" in primeira and "agora: observado" in primeira
-    exec(sete_dias, ns)  # de novo: sim:novo-3 já é conhecido
-    assert "pulando" in capsys.readouterr().out
-    assert ns["RELOGIO"].deslocamento.total_seconds() == 0
+    ns: dict = {"__name__": "__main__"}
+    responsavel = _Responsavel(ns, duble_bot, iniciar, tocar_golpe) if duble_bot is not None else None
+    saidas = []
+    try:
+        for fonte in _codigo(notebook):
+            if sem_encerrar and "parar_servidor()" in fonte:
+                break
+            for velho, novo in trocas:
+                fonte = fonte.replace(velho, novo)
+            exec(fonte, ns)
+            saidas.append(capsys.readouterr().out)
+    finally:
+        if responsavel is not None:
+            responsavel.fim()
+        if not sem_encerrar:
+            app_mod.parar_servidor()
+            app_mod.definir_guardiao(None)
+            if ns.get("guardiao") is not None:
+                ns["guardiao"].fechar()
+    return ns, duble_bot, saidas
 
 
-def test_celula_de_deteccao_mostra_suspeitas_e_numero_verdadeiro(notebook, capsys):
-    from guardiao.canal.cenarios import obter_cenario
-
-    ns = _namespace_demonstracao(com_gemini=True)
-    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
-    injecao = capsys.readouterr().out
-    assert injecao.count("Gemini: SUSPEITA") == 2 and "Gemini: sem suspeita" in injecao
-    exec(_celula_com(notebook, "guardiao.analisador.ultimos()"), ns)
-    saida = capsys.readouterr().out
-    assert "número salvo nos contatos: Pedro Neto 5500987650003" in saida
-    assert "número salvo nos contatos: Lucas Filho 5500987650002" in saida
-    assert "suspeitas: 2" in saida and "sim:novo-3: sem suspeita" in saida
-    for cenario_id in ("contato_antigo_pede_dinheiro", "mensagem_em_grupo"):
-        for texto in obter_cenario(cenario_id).mensagens:
-            assert texto not in injecao + saida
+def _saida_com(saidas, notebook, trecho) -> str:
+    """A saída da célula que contém `trecho` (as células e as saídas estão na mesma ordem)."""
+    [indice] = [i for i, fonte in enumerate(_codigo(notebook)) if trecho in fonte]
+    return saidas[indice]
 
 
-def test_celula_de_deteccao_sem_gemini_avisa(notebook, capsys):
-    ns = _namespace_demonstracao()
-    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
-    assert "Gemini:" not in capsys.readouterr().out
-    exec(_celula_com(notebook, "guardiao.analisador.ultimos()"), ns)
-    assert "detecção está desligada" in capsys.readouterr().out
+def _sessao_falsa(pasta):
+    arquivos = [pasta / "guardiao.session", pasta / "guardiao.session-journal"]
+    for arquivo in arquivos:
+        arquivo.write_bytes(b"")
+    return arquivos
 
 
-def test_celula_do_conjunto_cap3(notebook, capsys):
-    fonte = _celula_com(notebook, "RODAR_CONJUNTO_CAP3 = False")
-    ns = _namespace_demonstracao(com_gemini=True)
-    exec(fonte, ns)
-    assert "pulando" in capsys.readouterr().out and not ns["detector"].cliente.pedidos
-    exec(fonte.replace("RODAR_CONJUNTO_CAP3 = False", "RODAR_CONJUNTO_CAP3 = True"), ns)
-    assert "acertos: 8 de 8" in capsys.readouterr().out
+CURTO = (("ESPERA_CADASTRO_S = 300", "ESPERA_CADASTRO_S = 0.3"), ("ESPERA_TOQUE_S = 180", "ESPERA_TOQUE_S = 0.3"))
+EXTRAS = (
+    ("RODAR_PRAZO = False", "RODAR_PRAZO = True"),
+    ("RODAR_7_DIAS = False", "RODAR_7_DIAS = True"),
+    ("RODAR_CONJUNTO_CAP3 = False", "RODAR_CONJUNTO_CAP3 = True"),
+)
+
+
+def test_roteiro_completo_com_dubles(notebook, monkeypatch, tmp_path, capsys, so_local):
+    """O sinal de sucesso de ponta a ponta: Iniciar e "É golpe" tocados por uma thread."""
+    import guardiao.app as app_mod
+    from test_casos import NUMERO_PEDRO
+
+    sessao = _sessao_falsa(tmp_path)
+    ns, bot, saidas = _rodar_notebook(notebook, monkeypatch, tmp_path, capsys)
+    tudo = "\n".join(saidas)
+
+    assert "Flask no ar na porta" in tudo and "Traceback" not in tudo
+    cadastro = _saida_com(saidas, notebook, "esperar_cadastro(guardiao")
+    # a thread pode tocar Iniciar logo que o link sai, antes de a espera começar
+    assert "responsável cadastrada: ela recebeu" in cadastro or "a responsável já está cadastrada" in cadastro
+    assert "responsável cadastrada:           sim" in cadastro
+    golpe = _saida_com(saidas, notebook, 'abrir_caso(guardiao, ANALISADAS, "golpe_classico")')
+    assert "dizendo ser Pedro" in golpe and f"número verdadeiro no alerta: {NUMERO_PEDRO}" in golpe
+    assert 'toque "É golpe" no alerta' in golpe and "caso: golpe (a responsável tocou É golpe)" in golpe
+    assert ">> [" in golpe and "Não faça nenhum Pix agora" in golpe
+    [alerta] = bot.alertas
+    assert alerta.numero_verdadeiro == NUMERO_PEDRO and alerta.como_chama_idosa == "sua mãe"
+
+    sem_alerta = _saida_com(saidas, notebook, "CENARIOS_SEM_ALERTA")
+    assert sem_alerta.count("alerta: nenhum") == 3 and "SIM (não devia)" not in sem_alerta
+    assert "descarte (contato conhecido)" in sem_alerta and "descarte (grupo)" in sem_alerta
+    assert "Gemini: sem suspeita" in sem_alerta
+    deteccao = _saida_com(saidas, notebook, "mostrar_deteccao(")
+    conferencia = _saida_com(saidas, notebook, "conferir_sinal(")
+    for texto in _descartados():  # do que foi descartado, nem o texto (o celular da Dona Maria mostra tudo)
+        assert texto not in sem_alerta + deteccao + conferencia
+
+    assert "sinal de sucesso: OK (10 de 10 itens)" in conferencia and "FALHOU" not in conferencia
+    assert ns["SINAL_OK"] is True
+
+    assert "número salvo nos contatos: Pedro Neto 5500987650003" in deteccao and "suspeitas: 1" in deteccao
+    for chave in ("RODAR_PRAZO", "RODAR_7_DIAS", "RODAR_CONJUNTO_CAP3"):
+        assert f"mude {chave} para True" in _saida_com(saidas, notebook, f"{chave} = False")
+    casos = _saida_com(saidas, notebook, "ROTULOS_TOQUE, hora")
+    assert "Pedro: golpe" in casos and "resposta: É golpe" in casos
+    assert "sim:" not in casos and "5500" not in casos and "98765" not in casos
+
+    encerrar = _saida_com(saidas, notebook, "parar_servidor()")
+    assert "casos apagados" in encerrar and "sessão do Telethon: apagada" in encerrar
+    assert not (tmp_path / "casos.json").exists() and not any(a.exists() for a in sessao)
+    assert ns["guardiao"] is None and app_mod._servidor is None and app_mod._guardiao is None
+
+
+def test_roteiro_completo_com_os_extras(notebook, monkeypatch, tmp_path, capsys, so_local):
+    """Com as chaves dos extras ligadas: 10 minutos e "Era ele mesmo" tardio, 7 dias e CAP-3.
+
+    Toques simulados: um toque de verdade da thread no Lucas correria com a própria célula, que
+    só pede o toque tardio depois de mostrar o "sem resposta".
+    """
+    trocas = EXTRAS + (("TOQUE_SIMULADO = False", "TOQUE_SIMULADO = True"),)
+    ns, bot, saidas = _rodar_notebook(
+        notebook, monkeypatch, tmp_path, capsys, tocar_golpe=False, trocas=trocas, sem_encerrar=True
+    )
+    try:
+        assert ns["SINAL_OK"] is True
+        prazo = _saida_com(saidas, notebook, "RODAR_PRAZO = False")
+        assert "relógio do Guardião adiantado 0:10:00" in prazo and "caso: sem resposta (o prazo venceu)" in prazo
+        assert "caso: era ele mesmo (contato liberado)" in prazo and "o número agora está: conhecido" in prazo
+        sete = _saida_com(saidas, notebook, "RODAR_7_DIAS = False")
+        assert "virou conhecido" in sete and "agora: observado" in sete
+        assert "acertos: 8 de 8" in _saida_com(saidas, notebook, "RODAR_CONJUNTO_CAP3 = False")
+        assert ns["RELOGIO"].deslocamento.total_seconds() == 0
+        assert ns["guardiao"].estado()["casos"] == {"aguardando": 0, "golpe": 1, "era_ele_mesmo": 1, "sem_resposta": 0}
+        avisos = [linha.texto for linha in ns["canal"].celular() if linha.tipo == "aviso"]
+        assert len(avisos) == 2 and "dizendo ser Lucas" in avisos[1]
+
+        golpe = _celula_com(notebook, 'abrir_caso(guardiao, ANALISADAS, "golpe_classico")')
+        exec(golpe, ns)  # de novo: o caso já está decidido
+        assert "já foi decidido" in capsys.readouterr().out and len(bot.alertas) == 2
+    finally:
+        exec(_celula_com(notebook, "parar_servidor()"), ns)
+    assert "casos apagados" in capsys.readouterr().out and ns["guardiao"] is None
+
+
+def test_roteiro_com_toque_simulado(notebook, monkeypatch, tmp_path, capsys, so_local):
+    trocas = (("TOQUE_SIMULADO = False", "TOQUE_SIMULADO = True"),)
+    ns, bot, saidas = _rodar_notebook(notebook, monkeypatch, tmp_path, capsys, tocar_golpe=False, trocas=trocas)
+    golpe = _saida_com(saidas, notebook, 'abrir_caso(guardiao, ANALISADAS, "golpe_classico")')
+    assert 'toque simulado: "É golpe"' in golpe and "caso: golpe" in golpe and ns["SINAL_OK"] is True
+
+
+def test_roteiro_sem_iniciar_pula_com_aviso(notebook, monkeypatch, tmp_path, capsys, so_local):
+    ns, bot, saidas = _rodar_notebook(notebook, monkeypatch, tmp_path, capsys, iniciar=False, trocas=CURTO)
+    assert "ninguém tocou Iniciar em 0.3 s" in _saida_com(saidas, notebook, "esperar_cadastro(guardiao")
+    for trecho in ('abrir_caso(guardiao, ANALISADAS, "golpe_classico")', "CENARIOS_SEM_ALERTA"):
+        assert "aviso: a responsável não está cadastrada" in _saida_com(saidas, notebook, trecho)
+    conferencia = _saida_com(saidas, notebook, "conferir_sinal(")
+    assert "[FALHOU] responsável cadastrada" in conferencia and "sinal de sucesso: FALHOU" in conferencia
+    assert ns["SINAL_OK"] is False and bot.alertas == []
+    assert "casos apagados" in _saida_com(saidas, notebook, "parar_servidor()")
+
+
+def test_roteiro_sem_toque_deixa_o_caso_aguardando(notebook, monkeypatch, tmp_path, capsys, so_local):
+    ns, bot, saidas = _rodar_notebook(notebook, monkeypatch, tmp_path, capsys, tocar_golpe=False, trocas=CURTO)
+    golpe = _saida_com(saidas, notebook, 'abrir_caso(guardiao, ANALISADAS, "golpe_classico")')
+    assert "caso: aguardando o toque da responsável" in golpe and "ainda sem toque" in golpe
+    conferencia = _saida_com(saidas, notebook, "conferir_sinal(")
+    assert '[FALHOU] caso do Pedro como "golpe"' in conferencia and "aguardando o toque" in conferencia
+    assert "[ok] alerta do golpe clássico" in conferencia and "FALHOU em 3 de 10 itens" in conferencia
+    assert len(bot.alertas) == 1 and ns["SINAL_OK"] is False
+
+
+@pytest.mark.parametrize("bot,gemini", [(False, True), (True, False), (False, False)])
+def test_roteiro_sem_bot_ou_sem_gemini_avisa(notebook, monkeypatch, tmp_path, capsys, so_local, bot, gemini):
+    ns, duble, saidas = _rodar_notebook(
+        notebook, monkeypatch, tmp_path, capsys, com_bot=bot, com_gemini=gemini, trocas=CURTO
+    )
+    credenciais = _saida_com(saidas, notebook, "carregar_segredos_colab(SEGREDOS)")
+    conferencia = _saida_com(saidas, notebook, "conferir_sinal(")
+    golpe = _saida_com(saidas, notebook, 'abrir_caso(guardiao, ANALISADAS, "golpe_classico")')
+    if not bot:
+        assert "sem TELEGRAM_BOT_TOKEN o modo demonstração segue sem bot" in credenciais
+        assert "TELEGRAM_BOT_TOKEN ausente" in _saida_com(saidas, notebook, "esperar_cadastro(guardiao")
+        assert "[FALHOU] bot do Guardião" in conferencia and "falta o Secret TELEGRAM_BOT_TOKEN" in conferencia
+    if not gemini:
+        assert "sem GEMINI_API_KEY a detecção pelo Gemini fica desligada" in credenciais
+        assert "detecção está desligada" in golpe
+        assert "[FALHOU] detecção pelo Gemini" in conferencia and "falta o Secret GEMINI_API_KEY" in conferencia
+    assert "aviso:" in golpe and ns["SINAL_OK"] is False
+    assert "casos apagados" in _saida_com(saidas, notebook, "parar_servidor()")
+
+
+# --------------------------------------------------------------------------- estrutura do roteiro
+
+
+def test_celulas_curtas_com_as_funcoes_no_roteiro(notebook):
+    codigo = "\n".join(_codigo(notebook))
+    for nome in ("def injetar_mostrando", "def abrir_caso", "def tocar", "def _hora", "def falta_para_alertar"):
+        assert nome not in codigo, nome  # saíram para guardiao/roteiro.py
+    for fonte in _codigo(notebook):
+        assert len(fonte.splitlines()) <= 75
+
+
+def test_ordem_do_sinal_de_sucesso(notebook):
+    codigo = _codigo(notebook)
+
+    def posicao(trecho):
+        [indice] = [i for i, fonte in enumerate(codigo) if trecho in fonte]
+        return indice
+
+    ordem = [
+        posicao("guardiao.conectar()"),
+        posicao("iniciar_em_segundo_plano()"),
+        posicao("guardiao.link_cadastro_vigente()"),
+        posicao("esperar_cadastro(guardiao"),
+        posicao('abrir_caso(guardiao, ANALISADAS, "golpe_classico")'),
+        posicao("CENARIOS_SEM_ALERTA"),
+        posicao("conferir_sinal("),
+        posicao("mostrar_deteccao("),
+        posicao("RODAR_PRAZO = False"),
+        posicao("RODAR_7_DIAS = False"),
+        posicao("RODAR_CONJUNTO_CAP3 = False"),
+        posicao("parar_servidor()"),
+    ]
+    assert ordem == sorted(ordem)
+    assert posicao("parar_servidor()") == len(codigo) - 1  # o Encerrar é a última célula
+    assert "guardiao.link_cadastro()" not in "\n".join(codigo)  # a célula do link usa o código da tela
+
+
+# --------------------------------------------------------------------------- seção 5 (histórias 5 e 7)
 
 
 @pytest.mark.parametrize("com_gemini", [True, False])
 def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, monkeypatch, tmp_path, com_gemini):
     import guardiao.canal.fabrica as fabrica
+    import guardiao.config as config
     import guardiao.gemini as gemini
     from duble_gemini import DubleRegras
     from guardiao.analise import Detector
@@ -283,8 +539,6 @@ def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, mon
     from guardiao.canal.simulado import CanalSimulado
 
     detector = Detector(DubleRegras()) if com_gemini else None
-    import guardiao.config as config
-
     monkeypatch.setattr(gemini, "criar_detector", lambda: detector)
     monkeypatch.setattr(fabrica, "criar_canal", lambda modo: CanalSimulado())
     monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)  # os casos não vão para backend/.local
@@ -306,182 +560,6 @@ def test_celula_da_secao_5_liga_a_deteccao_so_com_detector(notebook, capsys, mon
         if ns.get("guardiao") is not None:
             ns["guardiao"].fechar()
         definir_guardiao(None)
-
-
-# --------------------------------------------------------------------------- seção 8 (história 6)
-
-
-def _namespace_com_casos(tmp_path, notebook, capsys, cadastrar=True, cadastrar_antes=False):
-    """Seções 5 a 7 na ordem do notebook: injeção (seção 6) e depois o cadastro (seção 7)."""
-    from datetime import timedelta
-
-    from duble_gemini import DubleRegras
-    from guardiao.analise import Analisador, Detector
-    from guardiao.canal.cenarios import CENARIOS
-    from guardiao.canal.simulado import CanalSimulado
-    from guardiao.recepcao import Guardiao, RelogioAjustavel
-    from test_casos import DubleBot, Montagem
-
-    bot = DubleBot()
-    canal = CanalSimulado(saida=bot)
-    relogio = RelogioAjustavel()
-    analisadas, suspeitas = [], []
-    detector = Detector(DubleRegras())
-    analisador = Analisador(detector, canal.listar_contatos, ao_suspeitar=suspeitas.append, relogio=relogio, varredura_s=None)
-    arquivo = tmp_path / "casos.json"
-    guardiao = Guardiao(
-        canal,
-        relogio=relogio,
-        ao_analisar=analisadas.append,
-        analisador=analisador,
-        prazo_resposta=timedelta(minutes=10),
-        casos_arquivo=arquivo,
-        como_chama_idosa="sua mãe",
-        varredura_casos_s=None,
-    )
-    guardiao.conectar()
-    ns = {
-        "MODO": "demonstracao",
-        "canal": canal,
-        "guardiao": guardiao,
-        "ANALISADAS": analisadas,
-        "SUSPEITAS": suspeitas,
-        "CENARIOS": CENARIOS,
-        "RELOGIO": relogio,
-        "PRAZO_RESPOSTA": timedelta(minutes=10),
-        "CASOS_ARQUIVO": arquivo,
-        "detector": detector,
-        "bot": bot,
-    }
-    cadastro = lambda: Montagem.cadastrar(SimpleNamespace(guardiao=guardiao, bot=bot))  # noqa: E731
-    if cadastrar and cadastrar_antes:
-        cadastro()
-    exec(_celula_com(notebook, "def injetar_mostrando"), ns)
-    if cadastrar and not cadastrar_antes:
-        cadastro()
-    capsys.readouterr()
-    return ns
-
-
-def _celula_golpe(notebook, simulado=True, espera=None):
-    fonte = _celula_com(notebook, "def abrir_caso")
-    if simulado:
-        fonte = fonte.replace("TOQUE_SIMULADO = False", "TOQUE_SIMULADO = True")
-    if espera is not None:
-        fonte = fonte.replace("ESPERA_TOQUE_S = 180", f"ESPERA_TOQUE_S = {espera}")
-    return fonte
-
-
-def _avisos(ns):
-    return [linha.texto for linha in ns["canal"].celular() if linha.tipo == "aviso"]
-
-
-def test_secao_8_golpe_com_toque_simulado(notebook, capsys, tmp_path):
-    from test_casos import NUMERO_PEDRO
-
-    ns = _namespace_com_casos(tmp_path, notebook, capsys)
-    assert ns["guardiao"].casos.listar() == []  # na seção 6 ainda não havia responsável
-    exec(_celula_golpe(notebook), ns)
-    saida = capsys.readouterr().out
-    assert "dizendo ser Pedro" in saida and 'toque simulado: "É golpe"' in saida
-    assert "caso: golpe (a responsável tocou É golpe)" in saida
-    assert ">> " in saida and "Não faça nenhum Pix agora" in saida
-    [alerta] = ns["bot"].alertas
-    assert alerta.numero_verdadeiro == NUMERO_PEDRO and alerta.como_chama_idosa == "sua mãe"
-    assert len(_avisos(ns)) == 1
-    exec(_celula_golpe(notebook), ns)  # de novo: o caso já está decidido
-    assert "já foi decidido" in capsys.readouterr().out and len(ns["bot"].alertas) == 1
-    ns["guardiao"].fechar()
-
-
-def test_secao_8_golpe_com_caso_aberto_na_secao_6(notebook, capsys, tmp_path):
-    ns = _namespace_com_casos(tmp_path, notebook, capsys, cadastrar_antes=True)
-    assert len(ns["bot"].alertas) == 2  # Pedro e Lucas já alertados na injeção
-    exec(_celula_golpe(notebook), ns)
-    assert "caso: golpe" in capsys.readouterr().out and len(ns["bot"].alertas) == 2
-    ns["guardiao"].fechar()
-
-
-def test_secao_8_golpe_espera_o_toque_de_verdade(notebook, capsys, tmp_path):
-    import threading
-    import time
-
-    ns = _namespace_com_casos(tmp_path, notebook, capsys)
-
-    def responsavel_toca():
-        limite = time.monotonic() + 5
-        while ns["guardiao"].casos.caso_de("sim:novo-1") is None and time.monotonic() < limite:
-            time.sleep(0.01)
-        time.sleep(0.2)
-        ns["bot"].tocar("golpe")
-
-    tocador = threading.Thread(target=responsavel_toca)
-    tocador.start()
-    exec(_celula_golpe(notebook, simulado=False, espera=10), ns)
-    tocador.join(5)
-    saida = capsys.readouterr().out
-    assert 'toque "É golpe" no alerta' in saida and "caso: golpe" in saida and "toque simulado" not in saida
-    ns["guardiao"].fechar()
-
-
-def test_secao_8_golpe_sem_toque_continua_aguardando(notebook, capsys, tmp_path):
-    ns = _namespace_com_casos(tmp_path, notebook, capsys)
-    exec(_celula_golpe(notebook, simulado=False, espera=0), ns)
-    saida = capsys.readouterr().out
-    assert "caso: aguardando" in saida and "ainda sem toque" in saida and _avisos(ns) == []
-    ns["guardiao"].fechar()
-
-
-def test_secao_8_lucas_sem_resposta_e_toque_tardio(notebook, capsys, tmp_path):
-    ns = _namespace_com_casos(tmp_path, notebook, capsys)
-    exec(_celula_golpe(notebook), ns)
-    capsys.readouterr()
-    exec(_celula_com(notebook, "remetente_lucas"), ns)
-    saida = capsys.readouterr().out
-    assert "relógio do Guardião adiantado 0:10:00" in saida
-    assert "caso: sem resposta (o prazo venceu)" in saida and "caso: era ele mesmo (contato liberado)" in saida
-    assert "o número agora está: conhecido" in saida
-    avisos = _avisos(ns)
-    assert len(avisos) == 2 and "dizendo ser Lucas" in avisos[1]
-    assert ns["RELOGIO"].deslocamento.total_seconds() == 0
-    assert ns["guardiao"].estado()["casos"] == {"aguardando": 0, "golpe": 1, "era_ele_mesmo": 1, "sem_resposta": 0}
-    exec(_celula_com(notebook, "def _hora"), ns)
-    lista = capsys.readouterr().out
-    assert "Lucas: era ele mesmo" in lista and "Pedro: golpe" in lista and "resposta: É golpe" in lista
-    assert "sim:" not in lista and "5500" not in lista and "98765" not in lista
-    ns["guardiao"].fechar()
-
-
-def test_secao_8_sem_responsavel_so_avisa(notebook, capsys, tmp_path):
-    ns = _namespace_com_casos(tmp_path, notebook, capsys, cadastrar=False)
-    exec(_celula_golpe(notebook), ns)
-    assert "a responsável não está cadastrada" in capsys.readouterr().out
-    exec(_celula_com(notebook, "remetente_lucas"), ns)
-    assert "a responsável não está cadastrada" in capsys.readouterr().out
-    assert ns["bot"].alertas == []
-    ns["guardiao"].fechar()
-
-
-def test_encerrar_apaga_os_casos(notebook, capsys, tmp_path):
-    ns = _namespace_com_casos(tmp_path, notebook, capsys)
-    exec(_celula_golpe(notebook), ns)
-    arquivo = ns["CASOS_ARQUIVO"]
-    guardiao = ns["guardiao"]
-    assert arquivo.exists()
-    exec(_celula_com(notebook, "parar_servidor()"), ns)
-    assert not arquivo.exists() and guardiao.casos.listar() == [] and ns["guardiao"] is None
-    assert "casos apagados" in capsys.readouterr().out
-
-
-def test_encerrar_sem_guardiao_apaga_o_arquivo_de_casos(notebook, capsys, tmp_path):
-    arquivo = tmp_path / "casos.json"
-    arquivo.write_text('{"versao": 1, "casos": []}', encoding="utf-8")
-    ns = {"guardiao": None, "canal": None, "CASOS_ARQUIVO": arquivo}
-    exec(_celula_com(notebook, "parar_servidor()"), ns)
-    assert not arquivo.exists() and "casos apagados" in capsys.readouterr().out
-
-
-# --------------------------------------------------------------------------- seções 5 e 9 (história 7)
 
 
 class _CanalRealSemSessao:
@@ -527,7 +605,7 @@ def test_secao_5_modo_real_sem_sessao_mantem_o_guardiao_registrado(notebook, cap
         guardiao = ns["guardiao"]
         assert guardiao is not None and app_mod._guardiao is guardiao
         assert not guardiao.estado()["conectado"] and guardiao.modo == "real"
-        assert "a tela (seção 9) mostra o QR da conta" in saida and "não conectou" not in saida
+        assert "a tela (seção 6) mostra o QR da conta" in saida and "não conectou" not in saida
         assert "python -m guardiao.verificar login" in saida
         assert not canal.fechado
     finally:
@@ -572,10 +650,53 @@ def _guardiao_anterior():
     return guardiao
 
 
-def test_secao_9_tela_maior_e_texto_novo(notebook):
+# --------------------------------------------------------------------------- seção 6 (tela) e 12 (encerrar)
+
+
+def test_secao_6_tela_maior_e_texto(notebook):
     fonte = _celula_com(notebook, "serve_kernel_port_as_iframe")
-    assert 'height=900' in fonte and "height=420" not in fonte
-    [texto] = [_fonte(c) for c in notebook["cells"] if _fonte(c).startswith("## 9. Tela do familiar")]
+    assert "height=900" in fonte and "height=420" not in fonte
+    [texto] = [_fonte(c) for c in notebook["cells"] if _fonte(c).startswith("## 6. Tela do familiar")]
     for trecho in ("Abrir o bot", "celular do golpista", "não responde casos", "caminhos relativos", "duas etapas"):
         assert trecho in texto, trecho
     assert "api/estado" not in texto
+
+
+def test_encerrar_sem_guardiao_apaga_casos_e_sessao(notebook, capsys, monkeypatch, tmp_path):
+    import guardiao.config as config
+
+    monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)
+    arquivo = tmp_path / "casos.json"
+    arquivo.write_text('{"versao": 1, "casos": []}', encoding="utf-8")
+    sessao = _sessao_falsa(tmp_path)
+    exec(_celula_com(notebook, "parar_servidor()"), {})  # nem a seção 5 rodou (kernel reiniciado)
+    assert not arquivo.exists() and not any(a.exists() for a in sessao)
+    assert "casos apagados; sessão do Telethon: apagada" in capsys.readouterr().out
+
+
+def test_encerrar_modo_real_faz_log_out(notebook, capsys, monkeypatch, tmp_path):
+    import guardiao.config as config
+
+    class CanalReal:
+        usar_conta = True
+
+        def __init__(self):
+            self.chamadas = []
+
+        def sair(self):
+            self.chamadas.append("sair")
+            for arquivo in tmp_path.glob("guardiao.session"):
+                arquivo.unlink()
+            return "encerrada"
+
+        def fechar(self):
+            self.chamadas.append("fechar")
+
+    monkeypatch.setattr(config, "LOCAL_DIR", tmp_path)
+    sessao = _sessao_falsa(tmp_path)  # o journal sobra depois do sair(): sai pelo glob
+    canal = CanalReal()
+    ns = {"guardiao": None, "canal": canal, "CASOS_ARQUIVO": tmp_path / "casos.json"}
+    exec(_celula_com(notebook, "parar_servidor()"), ns)
+    assert canal.chamadas == ["fechar", "sair", "fechar"] and not any(a.exists() for a in sessao)
+    assert "sessão do Telethon: encerrada no Telegram e apagada" in capsys.readouterr().out
+    assert ns["canal"] is None
