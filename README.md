@@ -1,7 +1,8 @@
 # Guardião da Família
 
 MVP da Global Solution 2026.2 da FIAP (CitizenTech, curso Agentes Inteligentes). Público:
-pessoas idosas. ODS 10, meta 10.2.
+pessoas idosas. ODS 10, meta 10.2. A descrição no formato do enunciado está em
+[DOCUMENTACAO.md](DOCUMENTACAO.md).
 
 O Guardião combate o **golpe do falso parente** em mensageiros: uma conta nova diz ser filho
 ou neto, diz que trocou de número e pede um Pix urgente a uma pessoa idosa. O golpe depende de
@@ -80,7 +81,7 @@ canal: o resto do backend só usa `receber_mensagens` e `enviar_alerta`.
    | 10 | Confere: o alerta leva o número salvo `+55 00 98765-0003 (salvo como Pedro Neto)` |
    | 11 | Avisa: a célula espera o toque **É golpe** (até 3 min); o caso fica golpe e o aviso aparece no celular simulado da Dona Maria |
    | 12 | teste 1: confere a interpretação, o alerta no bot, o toque e o sinal ("OK" ou o que falhou) |
-   | 13 | teste 2: a Júlia diz ser neta e não pede dinheiro; nenhum caso |
+   | 13 | teste 2: a Júlia diz ser neta e não pede dinheiro; o agente pede esse dado e não consulta o bot |
    | 14 | teste 3: o bot falha uma vez no cenário do Lucas; nenhum caso fica aberto e o envio volta ao normal |
    | 15 | encerrar: apaga os casos e a sessão do Telethon e desliga a tela |
 
