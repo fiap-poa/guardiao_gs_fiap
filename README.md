@@ -75,11 +75,14 @@ canal: o resto do backend só usa `receber_mensagens` e `enviar_alerta`.
    | 1–5 | código, dependências, Secrets, modo e conexão do Guardião |
    | 6 | a tela do familiar aparece no notebook, com o QR do bot |
    | 7 | a célula espera a responsável ler o QR (ou abrir o link) no Telegram dela e tocar **Iniciar** (até 5 min) |
-   | 8 | golpe clássico: o alerta chega ao Telegram da responsável com o número do Pedro; a célula espera o toque **É golpe** (até 3 min); o aviso aparece no celular simulado da Dona Maria e o caso, na tela |
-   | 9 | contato antigo, grupo e contato novo sem pedido de dinheiro: nenhum alerta |
-   | 10 | conferência automática: "OK" ou a lista do que falhou e do que falta |
-   | 11 | extras opcionais: detecção detalhada, 10 minutos sem resposta, 7 dias, conjunto de teste do CAP-3 |
-   | 12 | encerrar: apaga os casos e a sessão do Telethon e desliga a tela |
+   | 8 | Filtra: o vizinho Carlos e o grupo são descartados, sem mostrar o texto e sem caso |
+   | 9 | Interpreta: o Gemini lê o golpe clássico (diz ser Pedro, neto, e pede Pix) e marca a suspeita |
+   | 10 | Confere: o alerta leva o número salvo `+55 00 98765-0003 (salvo como Pedro Neto)` |
+   | 11 | Avisa: a célula espera o toque **É golpe** (até 3 min); o caso fica golpe e o aviso aparece no celular simulado da Dona Maria |
+   | 12 | teste 1: confere a interpretação, o alerta no bot, o toque e o sinal ("OK" ou o que falhou) |
+   | 13 | teste 2: a Júlia diz ser neta e não pede dinheiro; nenhum caso |
+   | 14 | teste 3: o bot falha uma vez no cenário do Lucas; nenhum caso fica aberto e o envio volta ao normal |
+   | 15 | encerrar: apaga os casos e a sessão do Telethon e desliga a tela |
 
    Sem Iniciar ou sem toque no prazo, a célula avisa e as seguintes pulam com aviso (nada
    quebra): toque e rode a célula de novo. Para uma apresentação, use *Executar anteriores* na

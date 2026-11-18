@@ -1,9 +1,10 @@
-"""Funções de apoio do notebook do Colab: o roteiro do sinal de sucesso (história 8).
+"""Funções de apoio do notebook do Colab: as quatro fases e os três testes.
 
-O notebook segue o sinal de sucesso do SPEC: conectar → tela com o QR do bot → esperar o
-Iniciar → golpe clássico → toque "É golpe" → os três cenários sem alerta → conferência
-(`conferir_sinal`). As células ficam curtas e chamam estas funções, que recebem tudo por
-parâmetro (o Guardião, as listas de observação, o servidor da tela).
+O notebook segue Filtra → Interpreta → Confere → Avisa e, no fim, os três testes do
+enunciado. A conferência (`conferir_sinal`) lê o que as fases já produziram: o Pedro
+(alerta, caso golpe, aviso e tela) e os descartes da Filtra. A Júlia fica no teste 2.
+As células ficam curtas e chamam estas funções, que recebem tudo por parâmetro (o
+Guardião, as listas de observação, o servidor da tela).
 
 O que é impresso segue a regra do notebook: o texto só aparece quando é fictício (remetente
 `sim:` do modo demonstração); do que foi descartado, nem isso. Nenhum id de conta real,
@@ -246,7 +247,7 @@ def mostrar_deteccao(guardiao, suspeitas: list) -> None:
         return
     resultados = guardiao.analisador.ultimos()  # cópia: no modo real, chegam resultados de outra thread
     if not resultados:
-        print("nada analisado ainda: rode o roteiro (seções 8 e 9)")
+        print("nada analisado ainda: rode a fase Interpreta (seção 9)")
         return
     for resultado in resultados:
         ficticio = str(resultado.remetente_id).startswith("sim:")  # conta real: sem textos
@@ -299,7 +300,7 @@ def _itens_do_sinal(guardiao, suspeitas: list, servidor) -> list[tuple[str, bool
     esperado = numero_esperado_pedro(canal)
     numero = numero_no_alerta(suspeitas, remetente) if caso is not None else None
     if caso is None:
-        detalhe = "o golpe clássico não gerou alerta (seção 8)"
+        detalhe = "o golpe clássico não gerou alerta (seção 9)"
     else:
         detalhe = f"o alerta saiu com {numero or 'nenhum número'}; o esperado era {esperado}"
     itens.append((f"alerta do golpe clássico com o número do Pedro ({esperado})", caso is not None and numero == esperado, detalhe))
@@ -330,12 +331,13 @@ def _itens_do_sinal(guardiao, suspeitas: list, servidor) -> list[tuple[str, bool
             detalhe = "a tela não mostra o caso do Pedro como golpe"
     itens.append(('tela (api/casos) com o Pedro como "golpe"', na_tela, detalhe))
 
-    for cenario_id in CENARIOS_SEM_ALERTA:
+    # Carlos e o grupo, já injetados na Filtra. A Júlia fica no teste 2, fora deste sinal.
+    for cenario_id in ("contato_antigo_pede_dinheiro", "mensagem_em_grupo"):
         cenario = obter_cenario(cenario_id)
         chegou = any(m.tipo == "recebida" and m.conversa_id == cenario.conversa_id for m in canal.celular())
         sem_caso = guardiao.casos.caso_de(cenario.remetente_id) is None
         if not chegou:
-            detalhe = "o cenário não foi injetado (seção 9)"
+            detalhe = "o cenário não foi injetado (seção 8)"
         else:
             detalhe = "gerou alerta, e não devia"
         itens.append((ROTULOS_SEM_ALERTA[cenario_id], chegou and sem_caso, detalhe))
@@ -346,7 +348,8 @@ def conferir_sinal(guardiao, suspeitas: list, servidor, modo: str) -> bool:
     """Confere o sinal de sucesso do SPEC e mostra cada item; devolve se tudo passou.
 
     Lê o caso do Pedro, o número que foi no alerta (comparado com o contato salvo do Pedro),
-    o celular simulado, `api/casos` pelo HTTP local da tela e os três cenários sem alerta.
+    o celular simulado, `api/casos` pelo HTTP local da tela e os descartes da Filtra
+    (Carlos e o grupo). A Júlia não entra aqui: ela fica no teste 2.
     """
     if modo != "demonstracao":
         print("aviso: a conferência do sinal de sucesso é do modo demonstração; pulando")

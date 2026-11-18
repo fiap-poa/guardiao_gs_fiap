@@ -218,7 +218,7 @@ def test_mostrar_deteccao(m, capsys):
     roteiro.mostrar_deteccao(None, [])
     assert "não está conectado" in capsys.readouterr().out
     roteiro.mostrar_deteccao(m.guardiao, m.suspeitas)
-    assert "nada analisado ainda" in capsys.readouterr().out
+    assert "nada analisado ainda: rode a fase Interpreta (seção 9)" in capsys.readouterr().out
     _roteiro_completo(m)
     capsys.readouterr()
     roteiro.mostrar_deteccao(m.guardiao, m.suspeitas)
@@ -236,7 +236,7 @@ def test_conferencia_ok_no_roteiro_completo(registrado, tela, capsys):
     capsys.readouterr()
     assert roteiro.conferir_sinal(m.guardiao, m.suspeitas, tela, "demonstracao") is True
     saida = capsys.readouterr().out
-    assert "FALHOU" not in saida and "sinal de sucesso: OK (10 de 10 itens)" in saida
+    assert "FALHOU" not in saida and "sinal de sucesso: OK (9 de 9 itens)" in saida
     assert f"[ok] alerta do golpe clássico com o número do Pedro ({NUMERO_PEDRO})" in saida
 
 
@@ -246,8 +246,9 @@ def test_conferencia_sem_iniciar_aponta_o_que_falta(registrado, tela, capsys):
     saida = capsys.readouterr().out
     assert "[ok] bot do Guardião" in saida and "[ok] detecção pelo Gemini" in saida
     assert "[FALHOU] responsável cadastrada" in saida and "ninguém tocou Iniciar" in saida
-    assert "o golpe clássico não gerou alerta" in saida and "o cenário não foi injetado" in saida
-    assert "sinal de sucesso: FALHOU em 8 de 10 itens" in saida
+    assert "o golpe clássico não gerou alerta (seção 9)" in saida
+    assert "o cenário não foi injetado (seção 8)" in saida
+    assert "sinal de sucesso: FALHOU em 7 de 9 itens" in saida
 
 
 def test_conferencia_sem_toque_aponta_o_caso(registrado, tela, capsys):
@@ -261,19 +262,19 @@ def test_conferencia_sem_toque_aponta_o_caso(registrado, tela, capsys):
     assert "[ok] alerta do golpe clássico com o número do Pedro" in saida
     assert '[FALHOU] caso do Pedro como "golpe"' in saida and "aguardando o toque" in saida
     assert "[FALHOU] aviso no celular simulado" in saida and '[FALHOU] tela (api/casos) com o Pedro como "golpe"' in saida
-    assert "FALHOU em 3 de 10 itens" in saida
+    assert "FALHOU em 3 de 9 itens" in saida
 
 
 def test_conferencia_sem_tela_e_com_alerta_indevido(m, capsys, monkeypatch):
     _roteiro_completo(m)
     original = m.guardiao.casos.caso_de
     pedro = m.caso("golpe_classico")
-    monkeypatch.setattr(m.guardiao.casos, "caso_de", lambda r: pedro if r == "sim:novo-3" else original(r))
+    monkeypatch.setattr(m.guardiao.casos, "caso_de", lambda r: pedro if r == "sim:carlos" else original(r))
     capsys.readouterr()
     assert roteiro.conferir_sinal(m.guardiao, m.suspeitas, None, "demonstracao") is False
     saida = capsys.readouterr().out
     assert "a tela não está no ar" in saida
-    assert "[FALHOU] contato novo sem pedido de dinheiro (Júlia) sem alerta" in saida and "gerou alerta" in saida
+    assert "[FALHOU] contato antigo (Carlos) sem alerta" in saida and "gerou alerta" in saida
 
 
 def test_conferencia_alerta_com_outro_numero_falha(m, capsys, monkeypatch):
